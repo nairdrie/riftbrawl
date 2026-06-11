@@ -1,24 +1,193 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Simple Box Game</title>
-    <style>
-      body {
-        margin: 0;
-      }
-      canvas {
-        display: block;
-      }
-    </style>
-  </head>
-  <body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
-    <script type="module" src="index.js"></script>
-    <!-- Add this within the <body> tag -->
-    <div id="startMenu" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center;">
-        <button id="startButton" style="font-size: 24px; padding: 10px 20px;">Start Game</button>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RIFTBRAWL — Platform Fighter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>" />
+</head>
+<body data-screen="screen-auth">
+
+  <canvas id="bg-canvas"></canvas>
+
+  <div id="conn-banner">⚠ Connection lost — reconnecting…</div>
+
+  <!-- ════════ AUTH ════════ -->
+  <section class="screen active" id="screen-auth">
+    <div class="auth-wrap">
+      <div class="logo">
+        <div class="logo-kicker">ENTER THE RIFT</div>
+        <h1 class="logo-title">RIFT<span>BRAWL</span></h1>
+        <div class="logo-tag">A 60HZ PLATFORM FIGHTER · 5 LEGENDS · 3 STOCKS · NO MERCY</div>
+      </div>
+      <form id="auth-form" class="card auth-card" autocomplete="off">
+        <div id="auth-tabs">
+          <button type="button" data-mode="login" class="active">SIGN IN</button>
+          <button type="button" data-mode="register">NEW FIGHTER</button>
+        </div>
+        <label>FIGHTER TAG
+          <input id="auth-username" maxlength="16" placeholder="e.g. SKYBREAKER" required />
+        </label>
+        <label>PASSWORD
+          <input id="auth-password" type="password" placeholder="••••••••" required />
+        </label>
+        <div id="auth-error"></div>
+        <button id="auth-submit" class="btn-primary" type="submit">ENTER THE ARENA</button>
+      </form>
     </div>
-  </body>
+  </section>
+
+  <!-- ════════ MAIN MENU ════════ -->
+  <section class="screen" id="screen-menu">
+    <header class="topbar">
+      <div class="brand">RIFT<span>BRAWL</span></div>
+      <div class="top-right">
+        <span id="pad-indicator" title="Controller">🎮</span>
+        <button id="mute-btn" class="btn-icon" title="Sound">🔊</button>
+        <div class="user-chip">
+          <div>
+            <div id="user-tag">—</div>
+            <div id="user-record">0W — 0L</div>
+          </div>
+          <button id="btn-logout" class="btn-mini ghost" title="Sign out">⎋</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="menu-body">
+      <div class="menu-main">
+        <h2 class="menu-heading">CHOOSE YOUR BATTLE</h2>
+        <button class="mode-btn" id="btn-quick">
+          <span class="mode-name">QUICK MATCH</span>
+          <span class="mode-desc">Find a rival online · ranked W/L</span>
+        </button>
+        <button class="mode-btn" id="btn-practice">
+          <span class="mode-name">VS CPU</span>
+          <span class="mode-desc">Sharpen your blade against the machine</span>
+        </button>
+        <button class="mode-btn subtle" id="btn-howto">
+          <span class="mode-name">HOW TO FIGHT</span>
+          <span class="mode-desc">Controls · mechanics · the sacred rules</span>
+        </button>
+      </div>
+
+      <aside class="friends-panel card">
+        <h3>FIGHTERS</h3>
+        <form id="add-friend-form">
+          <input id="friend-input" maxlength="16" placeholder="Add by tag…" />
+          <button class="btn-mini" type="submit">＋</button>
+        </form>
+        <div id="requests-block" style="display:none">
+          <h4>REQUESTS</h4>
+          <div id="requests-list"></div>
+        </div>
+        <div id="friends-list" class="friends-list"></div>
+      </aside>
+    </div>
+
+    <div id="queue-overlay">
+      <div class="queue-box card">
+        <div class="spinner"></div>
+        <div class="queue-text">SEARCHING FOR A RIVAL…</div>
+        <button id="btn-cancel-queue" class="btn-ghost">CANCEL</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ CHARACTER SELECT ════════ -->
+  <section class="screen" id="screen-select">
+    <header class="topbar slim">
+      <div class="brand sm">CHOOSE YOUR LEGEND</div>
+      <button id="btn-leave-select" class="btn-ghost">LEAVE</button>
+    </header>
+    <div class="select-body">
+      <div id="select-grid"></div>
+      <div class="select-footer">
+        <div id="select-desc" class="select-desc"></div>
+        <div class="select-right">
+          <div id="select-opp" class="opp-box"></div>
+          <button id="btn-ready" class="btn-primary big">READY</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ GAME ════════ -->
+  <section class="screen" id="screen-game">
+    <canvas id="game-canvas"></canvas>
+  </section>
+
+  <!-- ════════ RESULTS ════════ -->
+  <section class="screen" id="screen-results">
+    <div class="results-wrap">
+      <h1 id="results-title" class="win">VICTORY</h1>
+      <div id="results-sub"></div>
+      <div id="results-stats" class="card"></div>
+      <div class="results-actions">
+        <button id="btn-rematch" class="btn-primary big">REMATCH</button>
+        <button id="btn-results-leave" class="btn-ghost">BACK TO MENU</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- modals & toasts -->
+  <div class="modal" id="invite-modal">
+    <div class="modal-box card">
+      <h3>⚔ CHALLENGE</h3>
+      <p id="invite-text"></p>
+      <div class="modal-actions">
+        <button id="btn-invite-accept" class="btn-primary">ACCEPT</button>
+        <button id="btn-invite-decline" class="btn-ghost">DECLINE</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="howto-modal">
+    <div class="modal-box card wide">
+      <h3>HOW TO FIGHT</h3>
+      <div class="howto-grid">
+        <div>
+          <h4>⌨ KEYBOARD</h4>
+          <ul>
+            <li><b>A / D</b> or <b>← →</b> — move</li>
+            <li><b>Space</b> — jump (tap again mid-air = double jump)</li>
+            <li><b>J</b> — attack &nbsp;·&nbsp; <b>K</b> — special</li>
+            <li><b>Shift</b> — shield</li>
+            <li><b>S / ↓</b> while falling — fast-fall</li>
+          </ul>
+        </div>
+        <div>
+          <h4>🎮 CONTROLLER</h4>
+          <ul>
+            <li><b>Stick / D-pad</b> — move</li>
+            <li><b>A</b> — attack &nbsp;·&nbsp; <b>B</b> — special</li>
+            <li><b>X / Y</b> — jump</li>
+            <li><b>Bumpers / triggers</b> — shield</li>
+          </ul>
+        </div>
+        <div>
+          <h4>📜 THE RULES</h4>
+          <ul>
+            <li>Direction + attack/special = different moves (up, down, side, neutral)</li>
+            <li>Damage builds <b>%</b> — the higher it climbs, the further you fly</li>
+            <li>Knock rivals past the blast zone to take a stock</li>
+            <li><b>3 stocks</b> each. Last legend standing wins.</li>
+            <li>Hold jump for full hops, tap for short hops. Up-special to recover!</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-howto-close" class="btn-primary">GOT IT</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
 </html>

@@ -1,16 +1,20 @@
 {
-  "name": "smash-server",
+  "name": "rivals-of-aether-real",
   "version": "1.0.0",
-  "description": "",
-  "main": "server.js",
+  "private": true,
+  "description": "SMASH — a fast, browser-native platform fighter with realtime multiplayer",
+  "type": "module",
+  "main": "server/index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node test/integration.test.js"
   },
-  "author": "",
-  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.6.1",
-    "socket.io-client": "^4.6.1"
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
   }
 }
