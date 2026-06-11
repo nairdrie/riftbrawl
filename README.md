@@ -9,6 +9,9 @@ legends, one beautiful floating arena.
 
 ## Quick start
 
+Requires **Node 22+** (`nvm install 22 && nvm use 22`) — better-sqlite3 ships
+prebuilt binaries for Node 22, so there's nothing to compile on any OS.
+
 ```bash
 npm install
 npm start          # → http://localhost:3000
