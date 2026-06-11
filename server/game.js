@@ -12,6 +12,7 @@ const rooms = new Map();      // roomId → Room
 let nextRoomId = 1;
 
 export function getRoom(roomId) { return rooms.get(roomId); }
+export function roomCount() { return rooms.size; }
 
 // ── CPU opponent ────────────────────────────────────────────────────────────
 

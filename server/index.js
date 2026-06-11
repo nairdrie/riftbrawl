@@ -9,7 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import * as store from './store.js';
-import { Room, joinQueue, leaveQueue, createPracticeRoom, createPrivateRoom } from './game.js';
+import { Room, joinQueue, leaveQueue, createPracticeRoom, createPrivateRoom, roomCount } from './game.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -18,11 +18,18 @@ const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/shared', express.static(path.join(__dirname, '..', 'shared')));
 
+app.get('/healthz', (req, res) => {
+  res.json({ ok: true, uptime: Math.round(process.uptime()), sessions: sessions.size, rooms: roomCount() });
+});
+
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8 * 1024 });
 
 // uid → Session (one active connection per account)
 const sessions = new Map();
+
+// message types that hit crypto or the database — much stricter budget
+const SENSITIVE = new Set(['register', 'login', 'resume', 'addFriend', 'invite']);
 
 class Session {
   constructor(ws) {
@@ -31,6 +38,23 @@ class Session {
     this.room = null;
     this.queued = false;
     this.invitesOut = new Map(); // toUid → timestamp
+    // token buckets: general traffic (inputs at 60/s + headroom) and sensitive ops
+    this.bucket = { tokens: 240, cap: 240, rate: 130, at: Date.now() };
+    this.slowBucket = { tokens: 10, cap: 10, rate: 0.5, at: Date.now() };
+    this.drops = 0;
+  }
+
+  takeToken(sensitive) {
+    const b = sensitive ? this.slowBucket : this.bucket;
+    const now = Date.now();
+    b.tokens = Math.min(b.cap, b.tokens + (now - b.at) / 1000 * b.rate);
+    b.at = now;
+    if (b.tokens < 1) {
+      this.drops++;
+      return false;
+    }
+    b.tokens--;
+    return true;
   }
   get uid() { return this.user?.uid; }
   get username() { return this.user?.username; }
@@ -279,6 +303,10 @@ wss.on('connection', (ws) => {
     const fn = handlers[msg.t];
     if (!fn) return;
     if (!session.user && !UNAUTHED.has(msg.t)) return;
+    if (!session.takeToken(SENSITIVE.has(msg.t))) {
+      if (session.drops > 3000) ws.terminate();   // sustained flood — cut it off
+      return;
+    }
     try { fn(session, msg); } catch (e) {
       console.error(`[ws] handler ${msg.t} failed:`, e);
     }

@@ -105,6 +105,37 @@ truth.
 friends with live presence, match invites, quick-match queue, W/L records —
 all over the same websocket.
 
+## Deploying
+
+The whole game is one stateful Node process (sessions, rooms, and the
+matchmaking queue live in memory; accounts live in SQLite on disk), so run
+**exactly one instance** with a persistent volume — that's it.
+
+```bash
+# Fly.io (config in fly.toml — set app name & region first)
+fly launch --no-deploy
+fly volumes create smash_data --size 1
+fly deploy
+```
+
+Or any Docker host:
+
+```bash
+docker build -t riftbrawl .
+docker run -d -p 3000:3000 -v riftbrawl-data:/data riftbrawl
+```
+
+Notes:
+- TLS/`wss://` is handled by your platform's proxy (the client picks
+  `ws://` or `wss://` automatically from the page protocol).
+- `SMASH_DATA_DIR` (default `/data` in the container) holds `smash.db`;
+  a legacy `db.json` found there is migrated automatically on boot.
+- `/healthz` reports `{ok, uptime, sessions, rooms}` for health checks.
+- Websocket traffic is rate-limited per connection (general + a stricter
+  budget for auth/social ops) with an 8KB payload cap.
+- One shared-cpu instance comfortably runs hundreds of concurrent rooms;
+  scale vertically before thinking about anything fancier.
+
 ## Tests
 
 ```bash

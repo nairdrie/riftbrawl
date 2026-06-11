@@ -198,6 +198,19 @@ async function main() {
     a.send({ t: 'addFriend', username: 'bob' }); // no-op to trigger nothing
     await a.wait('toast').catch(() => {});
 
+    // ── rate limiting: sensitive ops are budget-capped
+    const flood = new Client('flood');
+    await flood.connect();
+    for (let i = 0; i < 40; i++) flood.send({ t: 'login', username: 'alice', password: 'wrong' });
+    await sleep(1500);
+    const authReplies = flood.msgs.filter(m => m.t === 'auth').length;
+    check('sensitive message flood is rate-limited', authReplies <= 12 && authReplies >= 5);
+    flood.ws.close();
+
+    // ── healthz
+    const health = await (await fetch(`http://localhost:${PORT}/healthz`)).json();
+    check('healthz reports server state', health.ok === true && typeof health.rooms === 'number');
+
     // ── practice mode vs CPU
     const d = new Client('dana');
     await d.connect();
