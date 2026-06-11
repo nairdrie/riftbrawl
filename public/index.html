@@ -93,7 +93,7 @@
       <div class="queue-box card">
         <div class="spinner"></div>
         <div class="queue-text">SEARCHING FOR A RIVAL…</div>
-        <button id="btn-cancel-queue" class="btn-ghost">CANCEL</button>
+        <button id="btn-cancel-queue" class="btn-ghost" data-back>CANCEL</button>
       </div>
     </div>
   </section>
@@ -102,7 +102,7 @@
   <section class="screen" id="screen-select">
     <header class="topbar slim">
       <div class="brand sm">CHOOSE YOUR LEGEND</div>
-      <button id="btn-leave-select" class="btn-ghost">LEAVE</button>
+      <button id="btn-leave-select" class="btn-ghost" data-back>LEAVE</button>
     </header>
     <div class="select-body">
       <div id="select-grid"></div>
@@ -129,7 +129,7 @@
       <div id="results-stats" class="card"></div>
       <div class="results-actions">
         <button id="btn-rematch" class="btn-primary big">REMATCH</button>
-        <button id="btn-results-leave" class="btn-ghost">BACK TO MENU</button>
+        <button id="btn-results-leave" class="btn-ghost" data-back>BACK TO MENU</button>
       </div>
     </div>
   </section>
@@ -141,7 +141,7 @@
       <p id="invite-text"></p>
       <div class="modal-actions">
         <button id="btn-invite-accept" class="btn-primary">ACCEPT</button>
-        <button id="btn-invite-decline" class="btn-ghost">DECLINE</button>
+        <button id="btn-invite-decline" class="btn-ghost" data-back>DECLINE</button>
       </div>
     </div>
   </div>
@@ -163,10 +163,11 @@
         <div>
           <h4>🎮 CONTROLLER</h4>
           <ul>
-            <li><b>Stick / D-pad</b> — move</li>
+            <li><b>Stick / D-pad</b> — move (smash it sideways to dash)</li>
             <li><b>A</b> — attack &nbsp;·&nbsp; <b>B</b> — special</li>
             <li><b>X / Y</b> — jump</li>
             <li><b>Bumpers / triggers</b> — shield</li>
+            <li><b>Start</b> — pause &nbsp;·&nbsp; navigate menus with the d-pad, <b>A</b> select, <b>B</b> back</li>
           </ul>
         </div>
         <div>
@@ -177,11 +178,14 @@
             <li>Knock rivals past the blast zone to take a stock</li>
             <li><b>3 stocks</b> each. Last legend standing wins.</li>
             <li>Hold jump for full hops, tap for short hops. Up-special to recover!</li>
+            <li>Fall past the edge? Drift in to <b>grab the ledge</b> — brief invulnerability, then climb, jump, or attack up</li>
+            <li>Crouch (hold down) to <b>crouch-cancel</b> — you take less knockback</li>
+            <li><b>Esc / Start</b> pauses — resuming counts down 3·2·1 for both players</li>
           </ul>
         </div>
       </div>
       <div class="modal-actions">
-        <button id="btn-howto-close" class="btn-primary">GOT IT</button>
+        <button id="btn-howto-close" class="btn-primary" data-back>GOT IT</button>
       </div>
     </div>
   </div>

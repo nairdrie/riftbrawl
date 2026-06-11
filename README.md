@@ -24,8 +24,19 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
   (`kb = bkb + %·kbg·200/(100+weight)`), hitstun, hitlag freeze-frames,
   launch decay, blast zones on all four sides, 3 stocks, respawn platform
   with invincibility.
-- **Movement** — run, full/short hops (hold vs tap), double jump, air drift,
-  fast-fall, recovery up-special with exhaustion until landing.
+- **Movement** — walk, dash (smash the stick), run, full/short hops (hold vs
+  tap), double jump, air drift, fast-fall, crouch, recovery up-special with
+  exhaustion until landing. Slow walks teeter at the edge instead of falling.
+- **Ledge play** — falling near the edge snaps you to a **ledge grab** with
+  invulnerability frames; it restores your double jump and up-special. Climb,
+  ledge-jump, drop, or getup-attack. The stage body is solid: no flying
+  through it from below.
+- **Crouch cancel** — crouching when hit takes reduced knockback (Melee
+  style), with a smaller hurtbox while crouched.
+- **Body push** — grounded fighters shove each other; walk a statue off the
+  edge.
+- **Pause** — Esc / Start pauses for everyone; resuming runs a fair 3·2·1
+  countdown for both players.
 - **Kits** — every character has jab / f-tilt / up-tilt / d-tilt, five
   aerials (nair/fair/bair/uair/dair), and four specials (neutral B
   projectile, side B rush, up B recovery, down B burst). Direction + button,
@@ -53,6 +64,13 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | Special | K | B |
 | Shield | Shift | bumpers / triggers |
 | Fast-fall | S / ↓ while falling | stick down |
+| Crouch | hold S / ↓ on the ground | hold stick down |
+| Pause | Esc / P | Start |
+
+Menus are fully controller-navigable: d-pad or stick to move the focus ring,
+**A** to select, **B** to back out. Controllers rumble on hits and KOs.
+(Browsers only expose a gamepad after you press any button on it with the
+page focused — the 🎮 icon in the top bar lights up when it's detected.)
 
 ## Architecture
 
@@ -90,8 +108,10 @@ all over the same websocket.
 ## Tests
 
 ```bash
-npm test                 # end-to-end: server + websockets, auth → friends →
-                         # invite → select → full match with KOs → rematch
+npm test                 # sim mechanics (ledge, dash, crouch cancel, body
+                         # push, stage collision) + end-to-end websockets:
+                         # auth → friends → invite → select → full match
+                         # with KOs → pause/resume → rematch
 node test/visual.js      # drives two real headless-Chrome clients through
                          # the entire flow and screenshots every screen
 ```

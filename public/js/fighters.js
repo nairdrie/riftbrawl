@@ -31,6 +31,7 @@ function computePose(p, char, t) {
     breathe: Math.sin(t * 2.1 + p.idx * 1.7) * 0.5 + 0.5,
     fall: 0,
     rise: 0,
+    hang: p.act === ACT.LEDGE,
   };
 
   if (p.grounded) {
@@ -38,10 +39,18 @@ function computePose(p, char, t) {
     pose.runAmt = clamp01(sp / char.runSpeed);
     pose.runPhase = (p.x * 0.045) || 0;       // distance-driven cycle = no foot sliding
     pose.lean = pose.runAmt * 0.22 * (p.vx * p.facing >= 0 ? 1 : -0.6);
+    // crouch (holding down on the ground)
+    if (p.act === ACT.FREE && (p.lastIn?.y ?? 0) > 0.5) pose.crouch = 0.6;
   } else {
     pose.rise = clamp01(-p.vy / 14);
     pose.fall = clamp01(p.vy / 12);
     pose.lean = 0.08 + pose.fall * 0.1;
+  }
+  if (pose.hang) {
+    pose.airborne = true;
+    pose.lean = -0.12;
+    pose.fall = 0.3;
+    pose.rise = 0;
   }
 
   switch (p.act) {
@@ -383,6 +392,7 @@ export function drawFighter(ctx, p, t, opts = {}) {
   const shx = 0, shy = shoulderY + 2 * s;
   let bArmX = -14 * s, bArmY = shy + 16 * s;
   if (pose.guard) { bArmX = 12 * s; bArmY = shy + 8 * s; }
+  if (pose.hang) { bArmX = 4 * s; bArmY = shy - 22 * s; }
   limb(ctx, -5 * s, shy, bArmX, bArmY, -5 * s, 6 * s * (char.weight > 110 ? 1.3 : 1), c.secondary);
 
   // ── head
@@ -393,7 +403,11 @@ export function drawFighter(ctx, p, t, opts = {}) {
 
   // ── front arm + weapon
   let handX, handY, weaponAngle;
-  if (pose.swing) {
+  if (pose.hang) {
+    // gripping the ledge overhead, body dangling
+    handX = 14 * s; handY = shy - 26 * s + Math.sin(t * 2.4) * 1.5 * s;
+    weaponAngle = -1.4;
+  } else if (pose.swing) {
     const a = pose.swing.angle;
     handX = Math.cos(a) * 22 * s;
     handY = shy + Math.sin(a) * 22 * s;

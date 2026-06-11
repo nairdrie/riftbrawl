@@ -491,6 +491,35 @@ export class Renderer {
     }
   }
 
+  drawPauseOverlay(by, resuming) {
+    const ctx = this.ctx;
+    const w = this.canvas.width, h = this.canvas.height;
+    const d = this.dpr;
+    ctx.save();
+    ctx.fillStyle = 'rgba(4, 5, 14, 0.55)';
+    ctx.fillRect(0, 0, w, h);
+    if (!resuming) {
+      ctx.textAlign = 'center';
+      ctx.font = `800 ${88 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.shadowColor = '#41d9ff'; ctx.shadowBlur = 34 * d;
+      ctx.fillStyle = '#e8edff';
+      ctx.fillText('PAUSED', w / 2, h * 0.42);
+      ctx.shadowBlur = 0;
+      ctx.font = `600 ${22 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.fillStyle = '#8d99c2';
+      ctx.fillText(`by ${by || 'a fighter'}`, w / 2, h * 0.42 + 44 * d);
+      const blink = Math.floor(this.t * 1.6) % 2 === 0;
+      if (blink) {
+        ctx.font = `600 ${17 * d}px Rajdhani, system-ui, sans-serif`;
+        ctx.fillStyle = '#aeb9d8';
+        ctx.fillText('START / ESC to resume', w / 2, h * 0.42 + 84 * d);
+      }
+    }
+    ctx.restore();
+    // announcements (the 3‑2‑1 resume count) should render above the dim
+    this.drawAnnounce(ctx);
+  }
+
   drawAnnounce(ctx) {
     if (!this.announce) return;
     const a = this.announce;

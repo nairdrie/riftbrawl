@@ -26,6 +26,7 @@ class Bot {
     const me = state.players[myIdx];
     const foe = state.players.find(p => p.idx !== myIdx && p.stocks > 0);
     if (!me || me.act === ACT.DEAD) return { b: 0, x: 0, y: 0 };
+    if (me.act === ACT.LEDGE) return { b: 0, x: me.x > 0 ? -1 : 1, y: 0 };
     let b = 0, x = 0, y = 0;
     this.cool = Math.max(0, this.cool - 1);
     this.shieldHold = Math.max(0, this.shieldHold - 1);
@@ -94,6 +95,8 @@ export class Room {
     this.timer = null;
     this.startTime = 0;
     this.tick = 0;
+    this.paused = false;
+    this.resumeAt = 0;
     rooms.set(this.id, this);
     for (const m of members) {
       if (m.isBot) {
@@ -152,6 +155,8 @@ export class Room {
     this.inputs = this.members.map(() => ({ b: 0, x: 0, y: 0 }));
     this.lastSeq = new Map(this.members.map(m => [m.uid, 0]));
     this.tick = 0;
+    this.paused = false;
+    this.resumeAt = 0;
     this.startTime = Date.now();
     this.broadcast({
       t: 'start',
@@ -168,9 +173,38 @@ export class Room {
 
   pump() {
     if (!this.state) return;
+    if (this.paused) {
+      if (this.resumeAt && Date.now() >= this.resumeAt) {
+        this.paused = false;
+        this.resumeAt = 0;
+        this.broadcast({ t: 'resumed' });
+      } else {
+        // freeze the clock so no ticks accumulate while paused
+        this.startTime = Date.now() - this.tick * (1000 / TICK_RATE);
+        return;
+      }
+    }
     const target = Math.floor((Date.now() - this.startTime) * TICK_RATE / 1000);
     let guard = 0;
     while (this.tick < target && guard++ < 10) this.stepOnce();
+  }
+
+  pause(uid) {
+    if (!this.state || this.state.phase !== PHASE.PLAYING) return;
+    if (this.paused) return;
+    const m = this.members.find(mm => mm.uid === uid);
+    if (!m) return;
+    this.paused = true;
+    this.resumeAt = 0;
+    this.broadcast({ t: 'paused', by: m.username });
+  }
+
+  unpause(uid) {
+    if (!this.paused || this.resumeAt) return;
+    if (!this.members.some(mm => mm.uid === uid)) return;
+    const delay = 3200; // 3‑2‑1 countdown so the resume is fair
+    this.resumeAt = Date.now() + delay;
+    this.broadcast({ t: 'resuming', inMs: delay });
   }
 
   stepOnce() {

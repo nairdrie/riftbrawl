@@ -9,7 +9,7 @@ import { step, deserializeState, cloneState } from '/shared/sim.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { MS_PER_TICK, ACT, PHASE } from '/shared/constants.js';
 import { net } from './net.js';
-import { sampleInput } from './input.js';
+import { sampleInput, samplePauseEdge, rumble } from './input.js';
 import { sfx } from './sfx.js';
 
 const INTERP_DELAY = 70;   // ms behind server for remote interpolation
@@ -33,6 +33,31 @@ export class MatchClient {
     this.acc = 0;
     this.lastT = 0;
     this.over = false;
+    this.paused = false;
+    this.pausedBy = '';
+    this.resumeT = 0;          // local time the match resumes
+    this.lastResumeCount = -1;
+  }
+
+  onPaused(msg) {
+    this.paused = true;
+    this.pausedBy = msg.by;
+    this.resumeT = 0;
+    sfx.count();
+  }
+
+  onResuming(msg) {
+    this.resumeT = performance.now() + (msg.inMs || 3200);
+  }
+
+  onResumed() {
+    this.paused = false;
+    this.pausedBy = '';
+    this.resumeT = 0;
+    this.lastResumeCount = -1;
+    this.acc = 0;
+    this.renderer.setAnnounce('GO!', '', 0.7, '#41d9ff');
+    sfx.go();
   }
 
   init(snap) {
@@ -69,6 +94,11 @@ export class MatchClient {
 
   tick() {
     if (!this.pred || this.over) return;
+    if (samplePauseEdge()) {
+      if (!this.paused) net.send({ t: 'pause' });
+      else if (!this.resumeT) net.send({ t: 'unpause' });
+    }
+    if (this.paused) return;   // frozen — no inputs, no prediction
     const inp = sampleInput();
     this.seq++;
     net.send({ t: 'input', seq: this.seq, b: inp.b, x: inp.x, y: inp.y });
@@ -208,6 +238,8 @@ export class MatchClient {
         this.renderer.hitSpark(p.x, p.y - 40, dmg, char.colors.accent);
         sfx.hit(dmg);
         this.renderer.shake(Math.min(22, 3 + dmg * 1.4));
+        if (i === this.myIdx) rumble(Math.min(1, 0.3 + dmg * 0.06), 0.5, 90 + dmg * 14);
+        else rumble(0.12, 0.3, 60);   // you landed the hit
       }
       // shield chip
       if (p.shield < q.shield - 1.5 && p.act !== ACT.SHIELD) { /* drained out */ }
@@ -219,6 +251,8 @@ export class MatchClient {
         this.renderer.koBlast(q.x, Math.min(q.y - 40, 80), char.colors.glow);
         this.renderer.shake(26);
         sfx.ko();
+        if (i === this.myIdx) rumble(1, 1, 550);
+        else rumble(0.5, 0.7, 250);
         if (p.stocks > 0) {
           this.renderer.setAnnounce(i === this.myIdx ? 'OUCH!' : 'KO!', '', 0.7,
             i === this.myIdx ? '#ff5d3a' : '#ffe16b');
@@ -258,14 +292,24 @@ export class MatchClient {
 
   frame(dt, now) {
     if (!this.pred) return;
+    // resume countdown announcements
+    if (this.paused && this.resumeT) {
+      const left = Math.ceil((this.resumeT - now) / 1000);
+      if (left >= 1 && left <= 3 && left !== this.lastResumeCount) {
+        this.lastResumeCount = left;
+        this.renderer.setAnnounce(`${left}`, 'resuming', 0.8, '#ffffff');
+        sfx.count();
+      }
+    }
     // decay reconciliation smoothing
     const decay = Math.pow(0.0008, dt);
     this.smooth.x *= decay;
     this.smooth.y *= decay;
 
     const view = this.buildView(now);
-    this.observe(view);
+    if (!this.paused) this.observe(view);
     this.renderer.render(dt, view);
+    if (this.paused) this.renderer.drawPauseOverlay(this.pausedBy, !!this.resumeT);
 
     // connection chip
     const ctx = this.renderer.ctx;

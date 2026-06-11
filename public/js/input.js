@@ -55,6 +55,28 @@ function dz(v) { return Math.abs(v) < DEADZONE ? 0 : (Math.abs(v) - DEADZONE) / 
 export function padConnected() { return gamepadIndex >= 0; }
 export function padName() { return gamepadName; }
 
+// controller haptics — fire and forget
+export function rumble(strong = 0.6, weak = 0.4, ms = 120) {
+  const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
+  const act = gp?.vibrationActuator;
+  if (!act?.playEffect) return;
+  act.playEffect('dual-rumble', {
+    duration: ms,
+    strongMagnitude: Math.min(1, Math.max(0, strong)),
+    weakMagnitude: Math.min(1, Math.max(0, weak)),
+  }).catch(() => {});
+}
+
+// pause toggle: Escape / P on keyboard, Start on a controller (edge-detected)
+let prevPauseHeld = false;
+export function samplePauseEdge() {
+  const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
+  const held = keys.has('Escape') || keys.has('KeyP') || !!gp?.buttons[9]?.pressed;
+  const edge = held && !prevPauseHeld;
+  prevPauseHeld = held;
+  return edge;
+}
+
 // menu navigation edge-detect for gamepad
 let prevPadB = 0;
 export function samplePadMenu() {

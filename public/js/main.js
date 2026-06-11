@@ -305,14 +305,6 @@ function animateSelect() {
       const hovered = cv.parentElement.matches(':hover') || id === selectedChar;
       drawPortrait(cv, id, hoverT, hovered ? 1 : 0);
     }
-    // gamepad navigation
-    const nav = samplePadMenu();
-    if (nav.left || nav.right) {
-      const i = CHARACTER_LIST.indexOf(selectedChar);
-      const ni = (i + (nav.right ? 1 : -1) + CHARACTER_LIST.length) % CHARACTER_LIST.length;
-      pickChar(CHARACTER_LIST[ni]);
-    }
-    if (nav.confirm) readyUp();
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
@@ -370,6 +362,9 @@ net.on('start', (msg) => {
 });
 
 net.on('snap', (msg) => match?.onSnap(msg));
+net.on('paused', (msg) => match?.onPaused(msg));
+net.on('resuming', (msg) => match?.onResuming(msg));
+net.on('resumed', () => match?.onResumed());
 
 net.on('end', (msg) => {
   lastResults = msg;
@@ -468,6 +463,87 @@ function menuBackground() {
   };
   loop();
 }
+
+// ── controller menu navigation (works on every screen + modal) ──────────────
+//
+// Spatial navigation: d-pad / left stick moves a focus ring between the
+// visible interactive elements; A activates, B backs out.
+
+let padFocus = null;
+
+function navScope() {
+  const modal = document.querySelector('.modal.open .modal-box');
+  if (modal) return modal;
+  if ($('#queue-overlay').classList.contains('open')) return $('#queue-overlay');
+  return document.querySelector('.screen.active');
+}
+
+function navItems(scope) {
+  if (!scope) return [];
+  return [...scope.querySelectorAll('button, .char-card, .mode-btn')]
+    .filter(el => !el.disabled && el.offsetParent !== null && el.getClientRects().length);
+}
+
+function setPadFocus(el) {
+  if (padFocus === el) return;
+  padFocus?.classList.remove('pad-focus');
+  padFocus = el || null;
+  if (padFocus) {
+    padFocus.classList.add('pad-focus');
+    padFocus.scrollIntoView({ block: 'nearest' });
+    sfx.hover();
+  }
+}
+
+function movePadFocus(dx, dy) {
+  const items = navItems(navScope());
+  if (!items.length) return;
+  if (!padFocus || !items.includes(padFocus)) { setPadFocus(items[0]); return; }
+  const r0 = padFocus.getBoundingClientRect();
+  const c0 = { x: r0.left + r0.width / 2, y: r0.top + r0.height / 2 };
+  let best = null, bestScore = Infinity;
+  for (const el of items) {
+    if (el === padFocus) continue;
+    const r = el.getBoundingClientRect();
+    const vx = (r.left + r.width / 2) - c0.x;
+    const vy = (r.top + r.height / 2) - c0.y;
+    const along = vx * dx + vy * dy;          // progress in the pressed direction
+    if (along <= 4) continue;
+    const ortho = Math.abs(vx * dy) + Math.abs(vy * dx);
+    const score = along + ortho * 2.2;
+    if (score < bestScore) { bestScore = score; best = el; }
+  }
+  if (best) setPadFocus(best);
+}
+
+function padBack(scope) {
+  const back = scope?.querySelector('[data-back]');
+  if (back) { sfx.click(); back.click(); }
+}
+
+function padNavLoop() {
+  const inGame = $('#screen-game').classList.contains('active');
+  if (inGame) {
+    setPadFocus(null);
+  } else {
+    const nav = samplePadMenu();
+    const scope = navScope();
+    if (nav.left) movePadFocus(-1, 0);
+    if (nav.right) movePadFocus(1, 0);
+    if (nav.up) movePadFocus(0, -1);
+    if (nav.down) movePadFocus(0, 1);
+    if (nav.confirm) {
+      const items = navItems(scope);
+      if (padFocus && items.includes(padFocus)) { sfx.click(); padFocus.click(); }
+      else if (items.length) setPadFocus(items[0]);
+    }
+    if (nav.back) padBack(scope);
+    // drop focus if the element left the screen
+    if (padFocus && !navItems(scope).includes(padFocus)) setPadFocus(null);
+  }
+  requestAnimationFrame(padNavLoop);
+}
+padNavLoop();
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

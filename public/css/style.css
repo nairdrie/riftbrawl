@@ -578,6 +578,15 @@ input:focus {
 }
 #conn-banner.visible { transform: none; }
 
+/* ── controller focus ring ───────────────────────────────────────────── */
+
+.pad-focus {
+  outline: 3px solid var(--cyan) !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 24px rgba(65, 217, 255, 0.45) !important;
+  transition: outline-offset 0.08s;
+}
+
 /* ── responsive ──────────────────────────────────────────────────────── */
 
 @media (max-width: 980px) {

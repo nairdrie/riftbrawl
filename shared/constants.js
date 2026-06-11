@@ -43,7 +43,39 @@ export const ACT = {
   SHIELDBREAK: 6,
   DEAD: 7,          // waiting to respawn
   RESPAWN: 8,       // standing on revival platform
+  LEDGE: 9,         // hanging from the stage edge
 };
+
+// Ledge mechanics
+export const LEDGE = {
+  invuln: 48,        // invincibility ticks on grab
+  maxHang: 300,      // auto-drop after this many ticks
+  regrabDelay: 32,   // ticks before the ledge can be grabbed again
+  grabW: 44,         // horizontal reach of the grab box beyond the edge
+  grabInner: 8,      // reach inside the edge
+  grabTop: -8,       // grab box vertical range (feet y)
+  grabBottom: 88,
+  hangX: 16,         // hang offset outward from the edge
+  hangY: 46,         // feet below stage top while hanging
+};
+
+export const DASH = {
+  ticks: 14,         // initial dash burst duration
+  mult: 1.4,         // dash speed multiplier over run speed
+  walkMult: 0.55,    // walk speed (partial stick tilt)
+  tapHi: 0.75,       // stick must reach this…
+  tapLo: 0.35,       // …from below this in one tick = smash input
+};
+
+export const CROUCH_KB = 0.82;  // crouch-cancel knockback multiplier
+
+export const BODY_PUSH = {
+  range: 34,         // horizontal distance under which grounded bodies push
+  resolve: 0.5,      // fraction of the overlap resolved per tick
+  speed: 3.5,        // max push per tick (split between the two)
+};
+
+export const TEETER_SPEED = 2.4;  // walking slower than this stops at the edge
 
 export const SHIELD_MAX = 60;
 export const SHIELD_DRAIN = 0.22;       // per tick while held

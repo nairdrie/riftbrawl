@@ -8,6 +8,7 @@ import {
   STAGE, BTN, ACT, PHASE, STOCKS, COUNTDOWN_TICKS,
   RESPAWN_FREEZE, RESPAWN_INVULN, RESPAWN_PLATFORM_TICKS,
   SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELDBREAK_TICKS,
+  LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED,
 } from './constants.js';
 import { CHARACTERS } from './characters.js';
 
@@ -30,7 +31,8 @@ export function createPlayer(uid, charId, idx) {
     shield: SHIELD_MAX, invuln: 0,
     respawnTimer: 0, platTimer: 0,
     exhausted: false, fastFalling: false,
-    prevB: 0,
+    prevB: 0, prevX: 0,
+    dashTimer: 0, ledgeTimer: 0, regrabTimer: 0,
     lastIn: { b: 0, x: 0, y: 0 },
   };
 }
@@ -83,6 +85,10 @@ function knockback(percent, weight, bkb, kbg) {
   return bkb + (percent / 100) * kbg * (200 / (100 + weight));
 }
 
+export function isCrouching(p) {
+  return p.grounded && p.act === ACT.FREE && p.lastIn.y > 0.5;
+}
+
 export function isSpecialMove(moveId) {
   return moveId === 'nb' || moveId === 'sb' || moveId === 'ub' || moveId === 'db';
 }
@@ -119,7 +125,8 @@ export function getActiveHitboxes(p, char) {
 
 function applyHit(target, tChar, hit, dirX, events, state) {
   target.percent = Math.min(999, target.percent + hit.dmg);
-  const kb = knockback(target.percent, tChar.weight, hit.bkb, hit.kbg);
+  let kb = knockback(target.percent, tChar.weight, hit.bkb, hit.kbg);
+  if (isCrouching(target)) kb *= CROUCH_KB;   // crouch cancel
   const rad = (hit.angle * Math.PI) / 180;
   target.vx = Math.cos(rad) * kb * dirX;
   target.vy = -Math.sin(rad) * kb;
@@ -185,6 +192,40 @@ function updatePlayer(p, inp, char, state, events) {
       }
       p.prevB = inp.b;
       if (p.act === ACT.RESPAWN) return; // still hovering — no physics
+      break;
+    }
+    case ACT.LEDGE: {
+      p.ledgeTimer--;
+      const towardStage = p.x < 0 ? 1 : -1;     // stage is at the center
+      const inpToward = inp.x * towardStage;
+      if (pressed & BTN.JUMP) {
+        // ledge jump — big, keeps remaining invulnerability
+        p.act = ACT.FREE; p.actFrame = 0;
+        p.vy = -char.jumpVel * 1.12;
+        p.vx = towardStage * 2.5;
+        p.regrabTimer = LEDGE.regrabDelay;
+        events.push({ type: 'djump', x: p.x, y: p.y, who: p.idx });
+      } else if (pressed & BTN.ATTACK) {
+        // getup attack
+        p.x = towardStage > 0 ? -(STAGE.halfWidth - 34) : (STAGE.halfWidth - 34);
+        p.y = STAGE.floorY; p.vx = 0; p.vy = 0;
+        p.grounded = true;
+        p.invuln = Math.max(p.invuln, 22);
+        startMove(p, 'ftilt');
+      } else if (inpToward > 0.5 || inp.y < -0.5) {
+        // climb up
+        p.x = towardStage > 0 ? -(STAGE.halfWidth - 30) : (STAGE.halfWidth - 30);
+        p.y = STAGE.floorY; p.vx = 0; p.vy = 0;
+        p.grounded = true;
+        p.invuln = Math.max(p.invuln, 18);
+        p.act = ACT.FREE; p.actFrame = 0;
+      } else if (inpToward < -0.5 || inp.y > 0.5 || p.ledgeTimer <= 0) {
+        // drop
+        p.act = ACT.FREE; p.actFrame = 0;
+        p.vy = 1;
+        p.invuln = 0;
+        p.regrabTimer = LEDGE.regrabDelay;
+      }
       break;
     }
     case ACT.JUMPSQUAT: {
@@ -288,11 +329,23 @@ function updatePlayer(p, inp, char, state, events) {
           startMove(p, pickSpecial(inp));
         } else if (pressed & BTN.JUMP) {
           p.act = ACT.JUMPSQUAT; p.actFrame = 0;
+        } else if (inp.y > 0.5 && Math.abs(inp.x) < 0.3) {
+          // crouch: hold position, brake hard
+          p.vx *= 0.7;
         } else {
-          // run
+          // walk / run / dash — smashing the stick gives an initial dash burst
+          const tapped = Math.abs(inp.x) >= DASH.tapHi && Math.abs(p.prevX) < DASH.tapLo;
+          if (tapped) p.dashTimer = DASH.ticks;
           if (Math.abs(inp.x) > 0.15) {
             p.facing = inp.x > 0 ? 1 : -1;
-            const target = inp.x * char.runSpeed;
+            let target;
+            if (p.dashTimer > 0 && Math.abs(inp.x) > 0.3) {
+              target = Math.sign(inp.x) * char.runSpeed * DASH.mult;
+            } else if (Math.abs(inp.x) >= DASH.tapHi) {
+              target = inp.x * char.runSpeed;
+            } else {
+              target = inp.x * char.runSpeed * DASH.walkMult;
+            }
             p.vx += (target - p.vx) * 0.28;
           } else {
             p.vx *= char.friction;
@@ -330,8 +383,81 @@ function updatePlayer(p, inp, char, state, events) {
 
 // ── physics & stage ─────────────────────────────────────────────────────────
 
+function tryLedgeGrab(p, char, events) {
+  if (p.grounded || p.regrabTimer > 0 || p.invuln > 0 && p.act === ACT.RESPAWN) return;
+  const canGrab =
+    (p.act === ACT.FREE && p.vy > -2) ||
+    (p.act === ACT.ATTACK && p.moveId === 'ub' && p.actFrame > char.specials.ub.from + 3);
+  if (!canGrab) return;
+  for (const side of [-1, 1]) {                  // -1 = left ledge, +1 = right
+    const edgeX = side * STAGE.halfWidth;
+    const dx = (p.x - edgeX) * side;             // + = outward from the stage
+    if (dx > -LEDGE.grabInner && dx < LEDGE.grabW &&
+        p.y > LEDGE.grabTop && p.y < LEDGE.grabBottom) {
+      p.act = ACT.LEDGE; p.actFrame = 0; p.moveId = '';
+      p.x = edgeX + side * LEDGE.hangX;
+      p.y = LEDGE.hangY;
+      p.vx = 0; p.vy = 0;
+      p.facing = -side;                          // face the stage
+      p.invuln = Math.max(p.invuln, LEDGE.invuln);
+      p.jumpsLeft = 1;                           // the ledge refreshes you
+      p.exhausted = false;
+      p.fastFalling = false;
+      p.ledgeTimer = LEDGE.maxHang;
+      events.push({ type: 'ledge', x: p.x, y: p.y, who: p.idx });
+      return;
+    }
+  }
+}
+
+// solid stage body: circle (player) vs rect (platform slab) push-out
+function stageBodyCollide(p, char) {
+  if (p.grounded || p.act === ACT.LEDGE || p.act === ACT.DEAD || p.act === ACT.RESPAWN) return;
+  const r = 26 * char.scale;
+  const cx = p.x, cy = p.y - 38 * char.scale;
+  const hw = STAGE.halfWidth, top = STAGE.floorY, bot = STAGE.floorY + STAGE.thickness;
+  const nx = Math.max(-hw, Math.min(hw, cx));
+  const ny = Math.max(top, Math.min(bot, cy));
+  const dx = cx - nx, dy = cy - ny;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= r * r) return;
+  if (d2 < 0.0001) {
+    // center inside the slab — eject through the nearest side
+    if (cx + hw < hw - cx) { p.x = -hw - r; p.vx = Math.min(p.vx, 0); }
+    else { p.x = hw + r; p.vx = Math.max(p.vx, 0); }
+    return;
+  }
+  const d = Math.sqrt(d2);
+  const push = (r - d) / d;
+  p.x += dx * push;
+  p.y += dy * push;
+  if (dy > 0.3) {
+    // bonked the underside
+    p.vy = Math.max(p.vy, 1.2);
+  }
+  if (dx * p.vx < 0 && Math.abs(dx) > Math.abs(dy)) p.vx *= 0.2;
+}
+
+// grounded fighters gently shove each other apart (walk-off pressure)
+function bodyPush(players) {
+  for (let i = 0; i < players.length; i++) {
+    for (let j = i + 1; j < players.length; j++) {
+      const a = players[i], b = players[j];
+      if (!a.grounded || !b.grounded) continue;
+      if (a.act === ACT.DEAD || b.act === ACT.DEAD || a.act === ACT.RESPAWN || b.act === ACT.RESPAWN) continue;
+      const dx = b.x - a.x;
+      if (Math.abs(dx) >= BODY_PUSH.range) continue;
+      const overlap = BODY_PUSH.range - Math.abs(dx);
+      const dir = dx === 0 ? (a.idx < b.idx ? -1 : 1) : Math.sign(dx);
+      const push = Math.min(BODY_PUSH.speed, overlap * BODY_PUSH.resolve);
+      a.x -= dir * push / 2;
+      b.x += dir * push / 2;
+    }
+  }
+}
+
 function physics(p, char, events) {
-  if (p.act === ACT.DEAD || p.act === ACT.RESPAWN) return;
+  if (p.act === ACT.DEAD || p.act === ACT.RESPAWN || p.act === ACT.LEDGE) return;
   if (p.hitlag > 0) return;
 
   if (!p.grounded) {
@@ -366,12 +492,21 @@ function physics(p, char, events) {
     }
     events.push({ type: 'land', x: p.x, y: p.y, who: p.idx });
   }
-  // walked off the edge
+  // walked off the edge — but slow walking teeters and stops at the brink
   if (p.grounded && !onStageX) {
-    p.grounded = false;
-    if (p.jumpsLeft < 1) p.jumpsLeft = 1;
+    if (p.act === ACT.FREE && p.dashTimer === 0 && Math.abs(p.vx) < TEETER_SPEED &&
+        Math.abs(p.x) - STAGE.halfWidth < Math.abs(p.vx) + 0.5) {
+      p.x = Math.sign(p.x) * STAGE.halfWidth;
+      p.vx = 0;
+    } else {
+      p.grounded = false;
+      if (p.jumpsLeft < 1) p.jumpsLeft = 1;
+    }
   }
   if (p.grounded) p.y = STAGE.floorY;
+
+  stageBodyCollide(p, char);
+  tryLedgeGrab(p, char, events);
 }
 
 function checkBlast(p, state, events) {
@@ -416,8 +551,12 @@ export function step(state, inputs) {
   // 1. inputs + state machines
   for (const p of state.players) {
     const inp = inputs[p.idx] ?? p.lastIn;
+    const prevX = p.lastIn.x;
     p.lastIn = inp;
+    if (p.regrabTimer > 0) p.regrabTimer--;
+    if (p.dashTimer > 0) p.dashTimer--;
     updatePlayer(p, inp, CHARACTERS[p.charId], state, events);
+    p.prevX = inp.x;
   }
 
   // 2. melee hit resolution
@@ -430,10 +569,12 @@ export function step(state, inputs) {
       if (atk.hitMask & (1 << tgt.idx)) continue;
       if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
       const tChar = CHARACTERS[tgt.charId];
-      const cx = tgt.x, cy = tgt.y - 40 * tChar.scale;
+      const crouched = isCrouching(tgt);
+      const cx = tgt.x, cy = tgt.y - (crouched ? 28 : 40) * tChar.scale;
+      const hr = tChar.hurtR * (crouched ? 0.85 : 1);
       for (const h of hbs) {
         const dx = h.x - cx, dy = h.y - cy;
-        if (dx * dx + dy * dy <= (h.r + tChar.hurtR) * (h.r + tChar.hurtR)) {
+        if (dx * dx + dy * dy <= (h.r + hr) * (h.r + hr)) {
           atk.hitMask |= 1 << tgt.idx;
           const dirX = tgt.x === atk.x ? atk.facing : Math.sign(tgt.x - atk.x);
           if (tgt.act === ACT.SHIELD && tgt.grounded) {
@@ -482,9 +623,12 @@ export function step(state, inputs) {
     if (dead) state.projectiles.splice(i, 1);
   }
 
-  // 4. physics + blast zones
+  // 4. physics + blast zones + body push
   for (const p of state.players) {
     physics(p, CHARACTERS[p.charId], events);
+  }
+  bodyPush(state.players);
+  for (const p of state.players) {
     checkBlast(p, state, events);
   }
 
@@ -504,7 +648,8 @@ export function step(state, inputs) {
 const P_FIELDS = [
   'x', 'y', 'vx', 'vy', 'facing', 'percent', 'stocks', 'jumpsLeft',
   'act', 'actFrame', 'hitMask', 'stun', 'hitlag', 'shield', 'invuln',
-  'respawnTimer', 'platTimer', 'prevB',
+  'respawnTimer', 'platTimer', 'prevB', 'prevX', 'dashTimer',
+  'ledgeTimer', 'regrabTimer',
 ];
 
 export function serializeState(state) {

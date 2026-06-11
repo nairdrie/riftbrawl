@@ -256,6 +256,14 @@ const handlers = {
     session.room?.handleInput(session.uid, msg);
   },
 
+  pause(session) {
+    session.room?.pause(session.uid);
+  },
+
+  unpause(session) {
+    session.room?.unpause(session.uid);
+  },
+
   leaveRoom(session) {
     leaveRoom(session);
   },

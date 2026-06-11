@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3107;
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let failures = 0;
 
 function check(name, cond) {
@@ -159,6 +160,24 @@ async function main() {
     const firstSnap = await a.wait('snap');
     check('snapshots flow', Array.isArray(firstSnap.s.pl) && firstSnap.s.pl.length === 2);
     check('input acks flow', typeof firstSnap.ack === 'number');
+
+    // ── pause / resume (only legal once the countdown has finished)
+    await a.wait('snap', 10000, m => m.s.ph === 1);
+    a.send({ t: 'pause' });
+    const pausedMsg = await b2.wait('paused', 5000);
+    check('pause reaches the other player with the pauser name', pausedMsg.by === 'alice');
+    await sleep(300);
+    a.drain('snap'); b2.drain('snap');
+    await sleep(500);
+    const noSnaps = a.msgs.filter(m => m.t === 'snap').length;
+    check('simulation freezes while paused', noSnaps === 0, );
+    b2.send({ t: 'unpause' });
+    const resuming = await a.wait('resuming', 5000);
+    check('unpause announces a countdown', resuming.inMs > 1000);
+    await a.wait('resumed', 8000);
+    check('match resumes after the countdown', true);
+    await a.wait('snap', 5000);
+    check('snapshots flow again after resume', true);
 
     // wait for a KO event
     const koSnap = await a.wait('snap', 90000, m => (m.ev || []).some(e => e.type === 'ko'));
