@@ -44,12 +44,19 @@ class Session {
     // token buckets: general traffic (inputs at 60/s + headroom) and sensitive ops
     this.bucket = { tokens: 240, cap: 240, rate: 130, at: Date.now() };
     this.slowBucket = { tokens: 10, cap: 10, rate: 0.5, at: Date.now() };
+    // flood detection over a sliding window — NOT lifetime-cumulative, so a
+    // long session can never "save up" enough drops to get disconnected
     this.drops = 0;
+    this.dropWindowStart = Date.now();
   }
 
   takeToken(sensitive) {
     const b = sensitive ? this.slowBucket : this.bucket;
     const now = Date.now();
+    if (now - this.dropWindowStart > 10000) {
+      this.drops = 0;
+      this.dropWindowStart = now;
+    }
     b.tokens = Math.min(b.cap, b.tokens + (now - b.at) / 1000 * b.rate);
     b.at = now;
     if (b.tokens < 1) {
@@ -334,7 +341,11 @@ wss.on('connection', (ws) => {
       console.log('[trace]', session.username || '?', msg.t, msg.charId || '');
     }
     if (!session.takeToken(SENSITIVE.has(msg.t))) {
-      if (session.drops > 3000) ws.terminate();   // sustained flood — cut it off
+      if (session.drops > 2000) {
+        // >2000 dropped messages within a 10s window is a genuine flood
+        console.warn(`[ws] flood disconnect: ${session.username || 'unauthed'} (${msg.t})`);
+        ws.terminate();
+      }
       return;
     }
     try { fn(session, msg); } catch (e) {
