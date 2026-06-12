@@ -47,7 +47,20 @@
       <div class="brand">RIFT<span>BRAWL</span></div>
       <div class="top-right">
         <span id="pad-indicator" title="Controller">🎮</span>
-        <button id="mute-btn" class="btn-icon" title="Sound">🔊</button>
+        <div class="sound-wrap">
+          <button id="mute-btn" class="btn-icon" title="Sound &amp; volume">🔊</button>
+          <div id="sound-panel" class="sound-panel">
+            <div class="sound-row">
+              <label for="vol-music">MUSIC</label>
+              <input id="vol-music" type="range" min="0" max="100" step="1" />
+            </div>
+            <div class="sound-row">
+              <label for="vol-sfx">SFX</label>
+              <input id="vol-sfx" type="range" min="0" max="100" step="1" />
+            </div>
+            <button id="mute-toggle" class="btn-mini ghost" type="button">MUTE ALL</button>
+          </div>
+        </div>
         <div class="user-chip">
           <div>
             <div id="user-tag">—</div>

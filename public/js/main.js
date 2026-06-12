@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { net } from './net.js';
-import { sfx, toggleMute, isMuted } from './sfx.js';
+import { sfx, toggleMute, isMuted, setSfxVolume, getSfxVolume } from './sfx.js';
+import { playMusic, setMusicVolume, getMusicVolume } from './music.js';
 import { MatchClient } from './game.js';
 import { Renderer } from './renderer.js';
 import { drawPortrait } from './fighters.js';
@@ -26,6 +27,8 @@ let lastResults = null;
 function show(id) {
   $$('.screen').forEach(s => s.classList.toggle('active', s.id === id));
   document.body.dataset.screen = id;
+  // Match track for live fights, the overture everywhere else.
+  playMusic(id === 'screen-game' ? 'match' : 'overture');
 }
 
 function toast(msg, kind = 'ok') {
@@ -277,11 +280,35 @@ $('#btn-swap-ab').classList.toggle('on', getSwapAB());
 $('#btn-swap-ab').textContent = getSwapAB() ? 'SWAP A/B: ON' : 'SWAP A/B: OFF';
 $('#btn-howto-close').addEventListener('click', () => { sfx.click(); $('#howto-modal').classList.remove('open'); });
 
-$('#mute-btn').addEventListener('click', () => {
-  const m = toggleMute();
-  $('#mute-btn').textContent = m ? '🔇' : '🔊';
+// ── sound settings popover (music + sfx volume, mute-all) ────────────────────
+const soundWrap = $('.sound-wrap');
+const soundPanel = $('#sound-panel');
+const volMusic = $('#vol-music');
+const volSfx = $('#vol-sfx');
+
+function refreshMuteIcon() {
+  $('#mute-btn').textContent = isMuted() ? '🔇' : '🔊';
+  $('#mute-toggle').textContent = isMuted() ? 'UNMUTE' : 'MUTE ALL';
+  $('#mute-toggle').classList.toggle('on', isMuted());
+}
+volMusic.value = Math.round(getMusicVolume() * 100);
+volSfx.value = Math.round(getSfxVolume() * 100);
+refreshMuteIcon();
+
+$('#mute-btn').addEventListener('click', (e) => {
+  e.stopPropagation();
+  sfx.click();
+  soundPanel.classList.toggle('open');
 });
-$('#mute-btn').textContent = isMuted() ? '🔇' : '🔊';
+volMusic.addEventListener('input', () => setMusicVolume(volMusic.value / 100));
+volSfx.addEventListener('input', () => setSfxVolume(volSfx.value / 100));
+volSfx.addEventListener('change', () => sfx.ok());
+$('#mute-toggle').addEventListener('click', () => { toggleMute(); refreshMuteIcon(); });
+// close the panel when clicking elsewhere
+document.addEventListener('click', (e) => {
+  if (soundPanel.classList.contains('open') && !soundWrap.contains(e.target))
+    soundPanel.classList.remove('open');
+});
 
 document.addEventListener('pad', (e) => {
   const el = $('#pad-indicator');
