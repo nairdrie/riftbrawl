@@ -37,6 +37,18 @@ export class MatchClient {
     this.pausedBy = '';
     this.resumeT = 0;          // local time the match resumes
     this.lastResumeCount = -1;
+    this.pauseEl = document.getElementById('pause-menu');
+    this.pauseByEl = document.getElementById('pause-by');
+  }
+
+  // Toggle the interactive (DOM) pause menu. Shown for a normal local/opponent
+  // pause; hidden once a resume countdown starts (the canvas draws that) or the
+  // match ends.
+  syncPauseMenu() {
+    if (!this.pauseEl) return;
+    const show = this.paused && !this.resumeT && !this.over && this.running;
+    this.pauseEl.classList.toggle('open', show);
+    if (show && this.pauseByEl) this.pauseByEl.textContent = this.pausedBy ? `by ${this.pausedBy}` : '';
   }
 
   onPaused(msg) {
@@ -108,7 +120,7 @@ export class MatchClient {
     requestAnimationFrame(loop);
   }
 
-  stop() { this.running = false; }
+  stop() { this.running = false; this.pauseEl?.classList.remove('open'); }
 
   tick() {
     if (!this.pred || this.over) return;
@@ -413,7 +425,10 @@ export class MatchClient {
     const view = this.buildView(now);
     if (!this.paused) this.observe(view);
     this.renderer.render(dt, view);
-    if (this.paused) this.renderer.drawPauseOverlay(this.pausedBy, !!this.resumeT);
+    // canvas overlay covers the resume countdown; the DOM menu (toggled below)
+    // owns the interactive PAUSED screen.
+    if (this.paused && this.resumeT) this.renderer.drawPauseOverlay();
+    this.syncPauseMenu();
 
     // connection chip
     const ctx = this.renderer.ctx;

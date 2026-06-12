@@ -59,7 +59,8 @@ export const LEDGE = {
   grabTop: -8,       // grab box vertical range (feet y)
   grabBottom: 88,
   hangX: 16,         // hang offset outward from the edge
-  hangY: 46,         // feet below stage top while hanging
+  hangY: 72,         // feet below stage top while hanging (puts the gripping
+                     //   hand at the lip instead of floating above it)
 };
 
 export const DASH = {

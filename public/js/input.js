@@ -50,6 +50,20 @@ window.addEventListener('gamepaddisconnected', (e) => {
 
 function anyKey(list) { return list.some(c => keys.has(c)); }
 
+// Browsers don't treat gamepad input as a user gesture, so audio never unlocks
+// for a controller-only player. We poll the pad every frame anyway, so the first
+// non-neutral reading is our cue: fire a synthetic gesture event (dispatched
+// synchronously, still inside the rAF poll) that the audio modules listen for.
+let padGestureFired = false;
+function notePadGesture(gp) {
+  if (padGestureFired || !gp) return;
+  const active = gp.buttons.some(b => b.pressed) || gp.axes.some(a => Math.abs(a) > 0.5);
+  if (active) {
+    padGestureFired = true;
+    document.dispatchEvent(new CustomEvent('pad:gesture'));
+  }
+}
+
 const DEADZONE = 0.24;
 function dz(v) { return Math.abs(v) < DEADZONE ? 0 : (Math.abs(v) - DEADZONE) / (1 - DEADZONE) * Math.sign(v); }
 
@@ -98,6 +112,7 @@ export function samplePadMenu() {
   const out = { confirm: false, back: false, left: false, right: false, up: false, down: false };
   const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
   if (!gp) { prevPadB = 0; return out; }
+  notePadGesture(gp);
   let b = 0;
   if (faceBtn(gp, 0)) b |= 1;
   if (faceBtn(gp, 1)) b |= 2;
@@ -135,6 +150,7 @@ export function sampleInput() {
 
   const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
   if (gp) {
+    notePadGesture(gp);
     const ax = dz(gp.axes[0] || 0);
     const ay = dz(gp.axes[1] || 0);
     if (Math.abs(ax) > Math.abs(x)) x = ax;

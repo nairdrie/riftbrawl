@@ -27,6 +27,9 @@ function ensure() {
 
 document.addEventListener('pointerdown', ensure, { once: true });
 document.addEventListener('keydown', ensure, { once: true });
+// gamepad input isn't a real user gesture, but resuming from inside the rAF
+// poll that fires this event works in practice — see input.js.
+document.addEventListener('pad:gesture', ensure, { once: true });
 
 export function toggleMute() {
   muted = !muted;
