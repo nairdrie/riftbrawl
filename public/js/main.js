@@ -226,6 +226,7 @@ let matchFoundActive = false;     // the "MATCH FOUND" splash is counting down
 let matchFoundTimers = [];
 
 $('#btn-quick').addEventListener('click', () => { sfx.select(); net.send({ t: 'queue' }); });
+$('#btn-ranked').addEventListener('click', () => { sfx.click(); toast('⚔ RANKED is coming soon — sharpen your blade'); });
 $('#btn-practice').addEventListener('click', () => { sfx.select(); net.send({ t: 'practice' }); });
 $('#btn-cancel-queue').addEventListener('click', () => { sfx.click(); net.send({ t: 'unqueue' }); });
 

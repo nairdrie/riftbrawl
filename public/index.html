@@ -43,8 +43,7 @@
 
   <!-- ════════ MAIN MENU ════════ -->
   <section class="screen" id="screen-menu">
-    <header class="topbar">
-      <div class="brand">RIFT<span>BRAWL</span></div>
+    <header class="topbar menu-topbar">
       <div class="top-right">
         <span id="pad-indicator" title="Controller">🎮</span>
         <div class="sound-wrap">
@@ -71,12 +70,29 @@
       </div>
     </header>
 
+    <div class="menu-logo">
+      <h1 class="menu-logo-title">RIFT<span>BRAWL</span></h1>
+      <div class="menu-logo-tag">A 60HZ PLATFORM FIGHTER</div>
+    </div>
+
     <div class="menu-body">
       <div class="menu-main">
         <h2 class="menu-heading">CHOOSE YOUR BATTLE</h2>
         <button class="mode-btn" id="btn-quick">
           <span class="mode-name">QUICK MATCH</span>
-          <span class="mode-desc">Find a rival online · ranked W/L</span>
+          <span class="mode-desc">Find a rival online · casual W/L</span>
+        </button>
+        <button class="mode-btn ranked" id="btn-ranked">
+          <span class="soon-badge">COMING SOON</span>
+          <span class="mode-name">RANKED</span>
+          <span class="mode-desc">Climb the ladder · seasonal ranks · eternal glory</span>
+          <span class="rank-strip" aria-hidden="true">
+            <span class="rank-tier" style="--tc:#cd8a5e">BRONZE</span>
+            <span class="rank-tier" style="--tc:#c9d4e8">SILVER</span>
+            <span class="rank-tier" style="--tc:#ffe16b">GOLD</span>
+            <span class="rank-tier" style="--tc:#41d9ff">DIAMOND</span>
+            <span class="rank-tier" style="--tc:#8a5cff">RIFTLORD</span>
+          </span>
         </button>
         <button class="mode-btn" id="btn-practice">
           <span class="mode-name">VS CPU</span>
