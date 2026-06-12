@@ -3,12 +3,22 @@
 let ctx = null;
 let master = null;
 let muted = localStorage.getItem('smash_muted') === '1';
+let sfxVol = readVol('rb_sfx_vol', 0.55);
+
+function readVol(key, def) {
+  const v = parseFloat(localStorage.getItem(key));
+  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : def;
+}
+
+function applyMaster() {
+  if (master) master.gain.value = muted ? 0 : sfxVol;
+}
 
 function ensure() {
   if (!ctx) {
     ctx = new (window.AudioContext || window.webkitAudioContext)();
     master = ctx.createGain();
-    master.gain.value = muted ? 0 : 0.55;
+    master.gain.value = muted ? 0 : sfxVol;
     master.connect(ctx.destination);
   }
   if (ctx.state === 'suspended') ctx.resume();
@@ -21,10 +31,18 @@ document.addEventListener('keydown', ensure, { once: true });
 export function toggleMute() {
   muted = !muted;
   localStorage.setItem('smash_muted', muted ? '1' : '0');
-  if (master) master.gain.value = muted ? 0 : 0.55;
+  applyMaster();
+  document.dispatchEvent(new CustomEvent('audio:mute', { detail: { muted } }));
   return muted;
 }
 export function isMuted() { return muted; }
+
+export function setSfxVolume(v) {
+  sfxVol = Math.min(1, Math.max(0, v));
+  localStorage.setItem('rb_sfx_vol', String(sfxVol));
+  applyMaster();
+}
+export function getSfxVolume() { return sfxVol; }
 
 function noiseBuffer(dur = 0.5) {
   const c = ensure();
