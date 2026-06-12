@@ -273,6 +273,11 @@ function updatePlayer(p, inp, char, state, events) {
         p.vx += inp.x * char.airAccel * AERIAL_DRIFT_IN_ATTACK;
         const cap = char.airSpeed;
         if (Math.abs(p.vx) > cap) p.vx = Math.sign(p.vx) * Math.max(cap, Math.abs(p.vx) * 0.98);
+        if (inp.y > 0.55 && p.vy > 0 && !p.fastFalling) {
+          p.fastFalling = true;
+          p.vy = Math.max(p.vy, char.fastFall * 0.92);
+          events.push({ type: 'ffall', x: p.x, y: p.y, who: p.idx });
+        }
       }
       if (f >= moveTotal(char, p.moveId)) {
         p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';
@@ -371,8 +376,12 @@ function updatePlayer(p, inp, char, state, events) {
         p.vx += inp.x * char.airAccel;
         const cap = char.airSpeed;
         if (Math.abs(p.vx) > cap) p.vx = Math.sign(p.vx) * Math.max(cap, Math.abs(p.vx) * 0.97);
-        // fast fall
-        if (inp.y > 0.55 && p.vy > 0) p.fastFalling = true;
+        // fast fall — snaps to speed instantly, like smash
+        if (inp.y > 0.55 && p.vy > 0 && !p.fastFalling) {
+          p.fastFalling = true;
+          p.vy = Math.max(p.vy, char.fastFall * 0.92);
+          events.push({ type: 'ffall', x: p.x, y: p.y, who: p.idx });
+        }
       }
       break;
     }

@@ -99,6 +99,7 @@ net.on('error', (msg) => {
 
 net.on('_close', () => {
   if (me) $('#conn-banner').classList.add('visible');
+  if (match && !match.over) match.connectionLost();
 });
 
 $('#btn-logout').addEventListener('click', () => {
@@ -141,7 +142,9 @@ net.on('social', (msg) => {
     });
     li.querySelector('.remove').addEventListener('click', () => {
       sfx.click();
-      net.send({ t: 'removeFriend', uid: f.uid });
+      confirmAction(`Remove ${f.username} from your fighters?`, () => {
+        net.send({ t: 'removeFriend', uid: f.uid });
+      });
     });
     list.appendChild(li);
   }
@@ -173,6 +176,25 @@ $('#add-friend-form').addEventListener('submit', (e) => {
 });
 
 net.on('toast', (msg) => toast(msg.msg, msg.kind));
+
+// generic confirmation modal
+let confirmCb = null;
+function confirmAction(text, cb) {
+  confirmCb = cb;
+  $('#confirm-text').textContent = text;
+  $('#confirm-modal').classList.add('open');
+}
+$('#btn-confirm-yes').addEventListener('click', () => {
+  $('#confirm-modal').classList.remove('open');
+  const cb = confirmCb; confirmCb = null;
+  sfx.click();
+  cb?.();
+});
+$('#btn-confirm-no').addEventListener('click', () => {
+  $('#confirm-modal').classList.remove('open');
+  confirmCb = null;
+  sfx.click();
+});
 
 // invites
 let inviteFrom = null;
@@ -362,6 +384,39 @@ net.on('start', (msg) => {
 });
 
 net.on('snap', (msg) => match?.onSnap(msg));
+
+// reconnected into a live match — rebuild or rebase the client
+net.on('resync', (msg) => {
+  room = { roomId: msg.roomId, phase: 'playing' };
+  if (match) {
+    match.resync(msg);
+  } else {
+    show('screen-game');
+    if (!renderer) renderer = new Renderer($('#game-canvas'));
+    renderer.resize();
+    renderer.hudPercent = [];
+    match = new MatchClient({ renderer, players: msg.players, myUid: me.uid });
+    match.init(msg.s);
+    match.resync(msg);
+    match.start();
+    window.__match = match;
+  }
+  if (!$('#screen-game').classList.contains('active')) show('screen-game');
+  toast('Reconnected to your match');
+});
+
+// re-authed but the match is gone (forfeited while away)
+net.on('roomGone', () => {
+  const inGameUi = ['screen-game', 'screen-select'].includes(document.body.dataset.screen);
+  if (match || room || inGameUi) {
+    if (match) { match.stop(); match = null; }
+    room = null;
+    readySent = false;
+    lastResults = null;
+    show('screen-menu');
+    toast('Your match ended while you were away', 'error');
+  }
+});
 net.on('paused', (msg) => match?.onPaused(msg));
 net.on('resuming', (msg) => match?.onResuming(msg));
 net.on('resumed', () => match?.onResumed());
@@ -464,6 +519,86 @@ function menuBackground() {
   loop();
 }
 
+// ── on-screen keyboard (controller text entry) ──────────────────────────────
+
+let oskTarget = null;   // the <input> being edited
+let oskShift = false;
+
+const OSK_ROWS = [
+  ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
+  ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', '_'],
+  ['⇧', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫'],
+  ['CANCEL', 'DONE'],
+];
+
+function buildOsk() {
+  const wrap = $('#osk-keys');
+  wrap.innerHTML = '';
+  for (const row of OSK_ROWS) {
+    const r = document.createElement('div');
+    r.className = 'osk-row';
+    for (const key of row) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'osk-key' + (key.length > 1 && key !== '⌫' && key !== '⇧' ? ' wide' : '') + (key === 'DONE' ? ' done' : '');
+      b.dataset.key = key;
+      b.textContent = key;
+      b.addEventListener('click', () => oskPress(key));
+      r.appendChild(b);
+    }
+    wrap.appendChild(r);
+  }
+}
+
+function oskRefresh() {
+  if (!oskTarget) return;
+  const v = oskTarget.value;
+  const shown = oskTarget.type === 'password' ? '•'.repeat(v.length) : v;
+  $('#osk-value').innerHTML = `${esc(shown)}<span class="caret">_</span>`;
+  $$('#osk-keys .osk-key').forEach(b => {
+    const k = b.dataset.key;
+    if (k.length === 1 && /[a-z]/i.test(k)) b.textContent = oskShift ? k.toUpperCase() : k.toLowerCase();
+    if (k === '⇧') b.classList.toggle('on', oskShift);
+  });
+}
+
+function oskPress(key) {
+  if (!oskTarget) return;
+  sfx.click();
+  if (key === 'DONE' || key === 'CANCEL') { closeOsk(); return; }
+  if (key === '⇧') { oskShift = !oskShift; oskRefresh(); return; }
+  if (key === '⌫') {
+    oskTarget.value = oskTarget.value.slice(0, -1);
+  } else if (oskTarget.value.length < (parseInt(oskTarget.maxLength) > 0 ? oskTarget.maxLength : 64)) {
+    const ch = /[a-z]/i.test(key) ? (oskShift ? key.toUpperCase() : key.toLowerCase()) : key;
+    oskTarget.value += ch;
+  }
+  oskTarget.dispatchEvent(new Event('input', { bubbles: true }));
+  oskRefresh();
+}
+
+function openOsk(input) {
+  oskTarget = input;
+  oskShift = true;   // tags usually start uppercase
+  $('#osk-label').textContent =
+    (input.closest('label')?.textContent || input.placeholder || 'TYPE').trim().split('\n')[0].toUpperCase();
+  $('#osk-modal').classList.add('open');
+  oskRefresh();
+  setPadFocus($('#osk-keys .osk-key'));
+  sfx.select();
+}
+
+function closeOsk() {
+  $('#osk-modal').classList.remove('open');
+  const t = oskTarget;
+  oskTarget = null;
+  if (t) setPadFocus(t);   // hand focus back to the field
+}
+
+buildOsk();
+window.__osk = openOsk; // debug/testing handle
+
 // ── controller menu navigation (works on every screen + modal) ──────────────
 //
 // Spatial navigation: d-pad / left stick moves a focus ring between the
@@ -480,7 +615,7 @@ function navScope() {
 
 function navItems(scope) {
   if (!scope) return [];
-  return [...scope.querySelectorAll('button, .char-card, .mode-btn')]
+  return [...scope.querySelectorAll('button, .char-card, .mode-btn, input')]
     .filter(el => !el.disabled && el.offsetParent !== null && el.getClientRects().length);
 }
 
@@ -534,10 +669,15 @@ function padNavLoop() {
     if (nav.down) movePadFocus(0, 1);
     if (nav.confirm) {
       const items = navItems(scope);
-      if (padFocus && items.includes(padFocus)) { sfx.click(); padFocus.click(); }
-      else if (items.length) setPadFocus(items[0]);
+      if (padFocus && items.includes(padFocus)) {
+        if (padFocus.tagName === 'INPUT') openOsk(padFocus);
+        else { sfx.click(); padFocus.click(); }
+      } else if (items.length) setPadFocus(items[0]);
     }
-    if (nav.back) padBack(scope);
+    if (nav.back) {
+      if (oskTarget) oskPress(oskTarget.value ? '⌫' : 'CANCEL');
+      else padBack(scope);
+    }
     // drop focus if the element left the screen
     if (padFocus && !navItems(scope).includes(padFocus)) setPadFocus(null);
   }

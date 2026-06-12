@@ -198,6 +198,34 @@ async function main() {
     a.send({ t: 'addFriend', username: 'bob' }); // no-op to trigger nothing
     await a.wait('toast').catch(() => {});
 
+    // ── mid-match disconnect → grace pause → reconnect → resync
+    a.drain('room'); b2.drain('room'); a.drain('snap'); b2.drain('snap');
+    a.drain('paused'); b2.drain('paused');
+    a.send({ t: 'ready', charId: 'volt' });
+    b2.send({ t: 'ready', charId: 'tide' });
+    const rcStart = await a.wait('start');
+    await b2.wait('start');
+    await a.wait('snap', 10000, m => m.s.ph === 1);   // countdown done
+    b2.ws.terminate();                                 // hard drop, no goodbye
+    const dcPause = await a.wait('paused', 5000);
+    check('disconnect pauses the match with a grace period', dcPause.reason === 'disconnected' && dcPause.graceMs > 0);
+    // bob comes back on a fresh socket with his token
+    const b3 = new Client('bob3');
+    await b3.connect();
+    b3.send({ t: 'resume', token: authB.token });
+    await b3.wait('auth');
+    const rs = await b3.wait('resync', 5000);
+    check('reconnect resyncs full match state', Array.isArray(rs.s.pl) && rs.s.pl.length === 2 && rs.players.length === 2);
+    await a.wait('resuming', 5000);
+    await a.wait('resumed', 8000);
+    check('match resumes after reconnect countdown', true);
+    await b3.wait('snap', 5000);
+    check('snapshots flow to the reconnected player', true);
+    // cleanly leave so later tests aren't affected
+    b3.send({ t: 'leaveRoom' });
+    await a.wait('oppLeft', 5000);
+    a.drain('room'); a.drain('end'); a.drain('snap');
+
     // ── rate limiting: sensitive ops are budget-capped
     const flood = new Client('flood');
     await flood.connect();
@@ -229,15 +257,21 @@ async function main() {
     check('CPU match simulates past countdown', psnap.s.f > 200);
     d.send({ t: 'leaveRoom' });
 
-    // ── disconnect mid-match forfeits
-    a.drain('room'); b2.drain('room'); a.drain('snap'); b2.drain('snap');
+    // ── disconnect mid-match forfeits once the grace period expires
+    a.drain('room'); a.drain('snap'); a.drain('paused'); a.drain('oppLeft');
+    a.send({ t: 'invite', uid: bobUid });
+    const inv2 = await b3.wait('invited');
+    b3.send({ t: 'acceptInvite', uid: inv2.from.uid });
+    await a.wait('room');
+    await b3.wait('room');
     a.send({ t: 'ready', charId: 'volt' });
-    b2.send({ t: 'ready', charId: 'tide' });
+    b3.send({ t: 'ready', charId: 'tide' });
     await a.wait('start');
-    await b2.wait('start');
-    b2.ws.close();
-    const oppLeft = await a.wait('oppLeft', 5000);
-    check('disconnect forfeits to opponent', !!oppLeft);
+    await b3.wait('start');
+    b3.ws.terminate();
+    await a.wait('paused', 5000);                      // grace pause kicks in
+    const oppLeft = await a.wait('oppLeft', 40000);    // …and expires after 30s
+    check('disconnect forfeits after the grace period', !!oppLeft);
 
     a.ws.close();
     d.ws.close();

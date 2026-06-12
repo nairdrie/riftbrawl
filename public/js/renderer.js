@@ -465,12 +465,20 @@ export class Renderer {
       const char = CHARACTERS[p.charId];
       const bx = clamp(sx, 56 * d, w - 56 * d);
       const by = clamp(sy, 56 * d, h - 170 * d);
+      // how close to a blast zone (0..1)
+      const danger = Math.max(
+        Math.abs(p.x) / STAGE.blastX,
+        p.y > 0 ? p.y / STAGE.blastBottom : -p.y / -STAGE.blastTop,
+      );
+      const critical = danger > 0.72;
+      const pulse = critical ? 0.5 + 0.5 * Math.abs(Math.sin(this.t * 9)) : 0;
       ctx.save();
       ctx.fillStyle = '#0d1126dd';
-      ctx.strokeStyle = char.colors.glow;
-      ctx.lineWidth = 2.5 * d;
-      ctx.beginPath(); ctx.arc(bx, by, 34 * d, 0, TAU); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.arc(bx, by, 34 * d, 0, TAU); ctx.clip();
+      ctx.strokeStyle = critical ? `rgba(255, 70, 50, ${0.6 + pulse * 0.4})` : char.colors.glow;
+      ctx.lineWidth = (2.5 + pulse * 2.5) * d;
+      const br = (34 + pulse * 4) * d;
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.clip();
       const pcv = this.portrait(p.charId);
       ctx.drawImage(pcv, bx - 30 * d, by - 30 * d, 60 * d, 60 * d);
       ctx.restore();

@@ -40,6 +40,9 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
   edge.
 - **Pause** — Esc / Start pauses for everyone; resuming runs a fair 3·2·1
   countdown for both players.
+- **Reconnect grace** — if a player's connection drops mid-match, the game
+  auto-pauses and holds their seat for 30 seconds; reconnecting (even after
+  a page refresh) resyncs the full match state and resumes with a countdown.
 - **Kits** — every character has jab / f-tilt / up-tilt / d-tilt, five
   aerials (nair/fair/bair/uair/dair), and four specials (neutral B
   projectile, side B rush, up B recovery, down B burst). Direction + button,
@@ -71,7 +74,9 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | Pause | Esc / P | Start |
 
 Menus are fully controller-navigable: d-pad or stick to move the focus ring,
-**A** to select, **B** to back out. Controllers rumble on hits and KOs.
+**A** to select, **B** to back out. Text fields open an on-screen keyboard
+when selected with the pad (B = backspace), so sign-in and adding friends
+work without ever touching the keyboard. Controllers rumble on hits and KOs.
 (Browsers only expose a gamepad after you press any button on it with the
 page focused — the 🎮 icon in the top bar lights up when it's detected.)
 

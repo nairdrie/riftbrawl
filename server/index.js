@@ -9,7 +9,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import * as store from './store.js';
-import { Room, joinQueue, leaveQueue, createPracticeRoom, createPrivateRoom, roomCount } from './game.js';
+import {
+  Room, joinQueue, leaveQueue, createPracticeRoom, createPrivateRoom,
+  roomCount, findRoomByUid, setRoomDissolvedHandler,
+} from './game.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
@@ -71,6 +74,14 @@ class Session {
 
 function sessionOf(uid) { return sessions.get(uid) || null; }
 
+setRoomDissolvedHandler((roomId, uids) => {
+  for (const uid of uids) {
+    const s = sessionOf(uid);
+    if (s?.room?.id === roomId) s.room = null;
+    notifyFriends(uid);
+  }
+});
+
 // ── social payloads ─────────────────────────────────────────────────────────
 
 function socialPayload(user) {
@@ -124,6 +135,14 @@ function completeAuth(session, user) {
     user: { uid: user.uid, username: user.username, wins: user.wins, losses: user.losses },
   });
   session.send(socialPayload(user));
+  // reconnect support: if they have a live room, plug them back in
+  const room = findRoomByUid(user.uid);
+  if (room && room.reattach(user.uid, (obj) => session.send(obj))) {
+    session.room = room;
+  } else {
+    session.room = null;
+    session.send({ t: 'roomGone' });
+  }
   notifyFriends(user.uid);
 }
 
@@ -162,7 +181,16 @@ function leaveRoom(session, reason = 'left') {
 
 function cleanup(session, notify = true) {
   leaveQueue(session.uid);
-  if (session.room) leaveRoom(session, 'disconnected');
+  if (session.room) {
+    const room = session.room;
+    if (room.state && room.members.some(m => m.uid === session.uid)) {
+      // mid-match: pause and hold the seat for 30s
+      room.memberDisconnected(session.uid);
+      session.room = null;
+    } else {
+      leaveRoom(session, 'disconnected');
+    }
+  }
   if (session.uid && sessions.get(session.uid) === session) {
     sessions.delete(session.uid);
     if (notify) notifyFriends(session.uid);

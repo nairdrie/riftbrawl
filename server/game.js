@@ -14,6 +14,17 @@ let nextRoomId = 1;
 export function getRoom(roomId) { return rooms.get(roomId); }
 export function roomCount() { return rooms.size; }
 
+export function findRoomByUid(uid) {
+  for (const room of rooms.values()) {
+    if (room.members.some(m => m.uid === uid)) return room;
+  }
+  return null;
+}
+
+// index.js registers a hook so dissolved rooms clear session.room pointers
+let onRoomDissolved = () => {};
+export function setRoomDissolvedHandler(fn) { onRoomDissolved = fn; }
+
 // ── CPU opponent ────────────────────────────────────────────────────────────
 
 class Bot {
@@ -98,6 +109,8 @@ export class Room {
     this.tick = 0;
     this.paused = false;
     this.resumeAt = 0;
+    this.dcTimers = new Map();   // uid → forfeit timeout while disconnected
+    this.dcWait = new Set();     // uids currently disconnected
     rooms.set(this.id, this);
     for (const m of members) {
       if (m.isBot) {
@@ -202,6 +215,7 @@ export class Room {
 
   unpause(uid) {
     if (!this.paused || this.resumeAt) return;
+    if (this.dcWait.size > 0) return;   // can't resume while a player is gone
     if (!this.members.some(mm => mm.uid === uid)) return;
     const delay = 3200; // 3‑2‑1 countdown so the resume is fair
     this.resumeAt = Date.now() + delay;
@@ -264,6 +278,57 @@ export class Room {
     setTimeout(() => { if (rooms.has(this.id)) this.broadcastLobby(); }, 100);
   }
 
+  // a player's socket dropped mid-match: pause and wait for them
+  memberDisconnected(uid) {
+    const m = this.members.find(mm => mm.uid === uid);
+    if (!m) return;
+    if (!this.state || this.state.phase === PHASE.OVER) {
+      // lobby / between matches — no grace needed
+      this.removeMember(uid, 'disconnected');
+      return;
+    }
+    if (this.dcTimers.has(uid)) return;
+    m.send = () => {};            // dead sink until they come back
+    this.dcWait.add(uid);
+    this.paused = true;
+    this.resumeAt = 0;
+    this.broadcast({ t: 'paused', by: m.username, reason: 'disconnected', graceMs: 30000 });
+    this.dcTimers.set(uid, setTimeout(() => {
+      this.dcTimers.delete(uid);
+      this.dcWait.delete(uid);
+      this.removeMember(uid, 'disconnected');
+    }, 30000));
+  }
+
+  // the player reconnected: restore their pipe, resync, resume
+  reattach(uid, send) {
+    const m = this.members.find(mm => mm.uid === uid);
+    if (!m) return false;
+    m.send = send;
+    const timer = this.dcTimers.get(uid);
+    if (timer) { clearTimeout(timer); this.dcTimers.delete(uid); }
+    this.dcWait.delete(uid);
+    if (this.state) {
+      m.send({
+        t: 'resync',
+        roomId: this.id,
+        players: this.members.map((mm, i) => ({
+          uid: mm.uid, username: mm.isBot ? 'CPU' : mm.username,
+          bot: !!mm.isBot, charId: this.picks.get(mm.uid)?.charId, idx: i,
+        })),
+        s: serializeState(this.state),
+        paused: this.paused,
+      });
+      if (this.paused && this.dcWait.size === 0 && !this.resumeAt) {
+        this.resumeAt = Date.now() + 3200;
+        this.broadcast({ t: 'resuming', inMs: 3200 });
+      }
+    } else {
+      this.broadcastLobby();
+    }
+    return true;
+  }
+
   removeMember(uid, reason = 'left') {
     const m = this.members.find(mm => mm.uid === uid);
     if (!m) return;
@@ -287,7 +352,11 @@ export class Room {
   destroy() {
     clearInterval(this.timer);
     this.timer = null;
+    for (const t of this.dcTimers.values()) clearTimeout(t);
+    this.dcTimers.clear();
+    const humanUids = this.members.filter(m => !m.isBot).map(m => m.uid);
     rooms.delete(this.id);
+    onRoomDissolved(this.id, humanUids);
   }
 }
 

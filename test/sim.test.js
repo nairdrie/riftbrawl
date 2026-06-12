@@ -135,5 +135,16 @@ const idle = { b: 0, x: 0, y: 0 };
     `t.x=${t.x.toFixed(0)} grounded=${t.grounded}`);
 }
 
+// ── 8. fast fall snaps instantly ─────────────────────────────────────────────
+{
+  const s = freshState();
+  const p = s.players[0];
+  p.grounded = false; p.y = -200; p.vy = 1;
+  const before = p.vy;
+  step(s, [{ b: 0, x: 0, y: 1 }, idle]);
+  check('fast fall snaps to full speed in one tick', p.vy > 12 && p.fastFalling,
+    `vy ${before} → ${p.vy.toFixed(1)}`);
+}
+
 console.log(failures ? `\n${failures} failure(s)` : '\nALL PASS');
 process.exit(failures ? 1 : 0);

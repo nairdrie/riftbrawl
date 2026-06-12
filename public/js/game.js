@@ -41,7 +41,7 @@ export class MatchClient {
 
   onPaused(msg) {
     this.paused = true;
-    this.pausedBy = msg.by;
+    this.pausedBy = msg.reason === 'disconnected' ? `${msg.by} — connection lost` : msg.by;
     this.resumeT = 0;
     sfx.count();
   }
@@ -63,6 +63,24 @@ export class MatchClient {
   init(snap) {
     this.pred = deserializeState(snap);
     this.snaps = [{ at: performance.now(), state: deserializeState(snap) }];
+  }
+
+  resync(msg) {
+    this.pred = deserializeState(msg.s);
+    this.snaps = [{ at: performance.now(), state: deserializeState(msg.s) }];
+    this.pending = [];
+    this.smooth.x = 0; this.smooth.y = 0;
+    this.prevObs = null;
+    this.acc = 0;
+    this.over = this.pred.phase === PHASE.OVER;
+    this.paused = !!msg.paused;
+    if (this.paused) this.pausedBy = 'reconnected';
+  }
+
+  connectionLost() {
+    this.paused = true;
+    this.pausedBy = '— connection lost —';
+    this.resumeT = 0;
   }
 
   start() {
@@ -212,6 +230,7 @@ export class MatchClient {
       players: view.players.map(p => ({
         x: p.x, y: p.y, percent: p.percent, stocks: p.stocks,
         grounded: p.grounded, act: p.act, vy: p.vy, shield: p.shield, moveId: p.moveId,
+        fastFalling: p.fastFalling,
       })),
       phase: view.phase,
     };
@@ -270,6 +289,16 @@ export class MatchClient {
       if (!p.grounded && !q.grounded && p.vy < -10 && q.vy > -2 && p.act === ACT.FREE) {
         sfx.djump();
         this.renderer.spawn({ type: 'ring', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.3, size: 18, color: char.colors.trail });
+      }
+      // fast fall kick
+      if (p.fastFalling && !q.fastFalling) {
+        sfx.whiff();
+        for (let s = 0; s < 4; s++) {
+          this.renderer.spawn({
+            type: 'spark', x: p.x - 14 + s * 9, y: p.y - 70 - Math.random() * 20,
+            vx: 0, vy: -7 - Math.random() * 3, life: 0.22, size: 2.2, color: '#cfe2ff',
+          });
+        }
       }
       // attack start whoosh
       if (p.act === ACT.ATTACK && q.act !== ACT.ATTACK) {

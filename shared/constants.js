@@ -11,9 +11,9 @@ export const STAGE = {
   halfWidth: 560,                       // platform surface x ∈ [-560, 560]
   floorY: 0,
   thickness: 64,
-  blastX: 1150,
-  blastTop: -950,
-  blastBottom: 720,
+  blastX: 1500,
+  blastTop: -1300,
+  blastBottom: 920,
   spawnX: [-340, 340, -130, 130],       // spawn slots by player index
   respawnY: -420,                       // floating respawn platform height
 };

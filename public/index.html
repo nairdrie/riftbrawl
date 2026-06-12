@@ -190,6 +190,28 @@
     </div>
   </div>
 
+  <div class="modal" id="confirm-modal">
+    <div class="modal-box card">
+      <h3 id="confirm-title">ARE YOU SURE?</h3>
+      <p id="confirm-text"></p>
+      <div class="modal-actions">
+        <button id="btn-confirm-yes" class="btn-danger">YES</button>
+        <button id="btn-confirm-no" class="btn-ghost" data-back>CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="osk-modal">
+    <div class="modal-box card osk-box">
+      <div class="osk-head">
+        <span id="osk-label">TYPE</span>
+        <span id="osk-value" class="osk-value"></span>
+      </div>
+      <div id="osk-keys"></div>
+      <div class="osk-hint">🎮 d-pad move · A press · B backspace</div>
+    </div>
+  </div>
+
   <div id="toasts"></div>
 
   <script type="module" src="/js/main.js"></script>
