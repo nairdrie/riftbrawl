@@ -171,12 +171,12 @@ export const aegisRig = {
         hB = [lerp(-8, 46, easeOut(ext)), shY + lerp(14, 9, ext)];
         hF = [16, shY + 22]; wA = 1.1; twoHand = false;
       } else if (M.id === 'db') {
-        // overhead earthquake slam
-        const a = M.ph === 'wind' ? lerp(0.9, -Math.PI / 2, M.wk)
-          : M.ph === 'hit' ? lerp(-Math.PI / 2, 1.25, easeIn(M.hk))
-          : lerp(1.25, 0.9, M.rk * 0.4);
-        hF = [Math.cos(a) * reach, shY + 3 + Math.sin(a) * reach];
-        wA = a;
+        // Verdict Counter — braced stance, hammer held across the body
+        const k = M.ph === 'wind' ? M.wk : M.ph === 'rec' ? 1 - M.rk : 1;
+        hF = [lerp(15, 19, k), shY + lerp(17, 9, k)];
+        hB = [lerp(11, 26, k), shY + lerp(20, 13, k)];
+        wA = lerp(1.18, -0.42, k);
+        twoHand = false;
       } else if (M.id === 'ub') {
         hF = [4, shY - 16]; wA = -Math.PI / 2 + 0.1;
       } else if (M.id === 'sb') {
@@ -255,15 +255,17 @@ export const aegisRig = {
     // ── move FX ──────────────────────────────────────────────────────────
     if (M && M.ph === 'hit') {
       if (M.id === 'db') {
-        // ground shock ring
-        const k = M.hk;
-        glowOn(ctx, C.glow, 20);
-        ink(ctx, C.glow, 4 * (1 - k) + 1);
-        ctx.globalAlpha *= 0.9 - k * 0.5;
+        // counter stance: a watching rune ward shimmers in front of him
+        const pulse = 0.7 + 0.3 * Math.sin(t * 10);
+        glowOn(ctx, C.glow, 18 * pulse);
+        ink(ctx, C.accent + 'cc', 2.8);
         ctx.beginPath();
-        ctx.ellipse(18, -4, 20 + k * 75, 8 + k * 18, 0, Math.PI, TAU);
+        ctx.ellipse(26, shY + 6, 14 * pulse, 30 * pulse, 0, 0, TAU);
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ink(ctx, C.glow + '88', 1.8);
+        ctx.beginPath();
+        ctx.ellipse(26, shY + 6, 8, 18, 0, t * 3, t * 3 + 4.4);
+        ctx.stroke();
         glowOff(ctx);
       } else if (M.id !== 'jab' && M.id !== 'nb' && M.id !== 'sb') {
         swingTrail(ctx, 0, shY + 3, 30, 78, M.aim - 1.9 + M.hk * 0.6, M.swing + 0.3, C.trail, 0.8);

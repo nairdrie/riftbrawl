@@ -230,7 +230,7 @@ export class MatchClient {
       players: view.players.map(p => ({
         x: p.x, y: p.y, percent: p.percent, stocks: p.stocks,
         grounded: p.grounded, act: p.act, vy: p.vy, shield: p.shield, moveId: p.moveId,
-        fastFalling: p.fastFalling, charge: p.charge,
+        fastFalling: p.fastFalling, charge: p.charge, stacks: p.stacks,
       })),
       phase: view.phase,
     };
@@ -310,6 +310,24 @@ export class MatchClient {
       if (p.act === ACT.ATTACK && q.act !== ACT.ATTACK) {
         if (p.moveId === 'nb') { /* shoot sfx on projectile spawn below */ }
         else sfx.whiff();
+      }
+      // VOLT: static stack gained / discharged
+      const st = p.stacks || 0, qst = q.stacks || 0;
+      if (st > qst) {
+        sfx.chargeTick(st / 5);
+        this.renderer.spawn({ type: 'spark', x: p.x, y: p.y - 70, vx: (Math.random() - 0.5) * 4, vy: -4, life: 0.3, size: 2.5, color: char.colors.accent });
+      } else if (qst >= 5 && st === 0) {
+        // discharge!
+        this.renderer.hitSpark(p.x, p.y - 40, 12, char.colors.accent);
+        sfx.chargeFull();
+      }
+      // teleport streak (position discontinuity during storm blink)
+      if (p.act === ACT.ATTACK && p.moveId === 'sb' && Math.abs(p.x - q.x) > 110) {
+        for (let k = 0; k < 10; k++) {
+          const lx = lerp(q.x, p.x, k / 9);
+          this.renderer.spawn({ type: 'spark', x: lx, y: p.y - 40 + (Math.random() - 0.5) * 18, vx: 0, vy: 0, life: 0.28, size: 3, color: char.colors.accent });
+        }
+        sfx.whiff();
       }
     }
 

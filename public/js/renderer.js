@@ -594,31 +594,123 @@ export class Renderer {
       }
     }
 
-    // projectiles
+    // projectiles (kind-aware)
     for (const pr of view.projectiles) {
       const char = CHARACTERS[pr.charId];
       const c = char.colors;
+      const kind = pr.kind || 'shot';
       ctx.save();
       ctx.translate(pr.x, pr.y);
-      ctx.rotate(Math.atan2(pr.vy, pr.vx));
-      ctx.shadowColor = c.glow; ctx.shadowBlur = 18;
-      const g = ctx.createRadialGradient(0, 0, 1, 0, 0, pr.r * 1.4);
-      g.addColorStop(0, '#ffffff');
-      g.addColorStop(0.45, c.accent);
-      g.addColorStop(1, c.glow + '00');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, pr.r * 1.4, 0, TAU); ctx.fill();
-      // tail
-      ctx.globalAlpha = 0.6;
-      const tg = ctx.createLinearGradient(0, 0, -pr.r * 4.5, 0);
-      tg.addColorStop(0, c.accent + 'cc');
-      tg.addColorStop(1, c.accent + '00');
-      ctx.fillStyle = tg;
-      ctx.beginPath();
-      ctx.moveTo(0, -pr.r * 0.7); ctx.lineTo(-pr.r * 4.5, 0); ctx.lineTo(0, pr.r * 0.7);
-      ctx.closePath(); ctx.fill();
+      switch (kind) {
+        case 'patch': {
+          // lingering fire pool
+          const flick = 0.85 + Math.sin(this.t * 9 + pr.id) * 0.15;
+          const fade = Math.min(1, pr.life / 40);
+          ctx.globalAlpha = fade;
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 16;
+          const pg = ctx.createRadialGradient(0, 6, 2, 0, 6, pr.r * 1.25);
+          pg.addColorStop(0, '#fff0d8cc');
+          pg.addColorStop(0.4, c.accent + 'aa');
+          pg.addColorStop(1, c.glow + '00');
+          ctx.fillStyle = pg;
+          ctx.beginPath(); ctx.ellipse(0, 4, pr.r * 1.25, pr.r * 0.55, 0, 0, TAU); ctx.fill();
+          for (let f = 0; f < 3; f++) {
+            const fx = (f - 1) * pr.r * 0.55 + Math.sin(this.t * 5 + f * 2 + pr.id) * 3;
+            const fh = (8 + (f % 2) * 5) * flick;
+            ctx.fillStyle = f % 2 ? c.accent : '#ffd9a0';
+            ctx.beginPath();
+            ctx.moveTo(fx - 4, 6);
+            ctx.quadraticCurveTo(fx + Math.sin(this.t * 11 + f) * 3, 6 - fh * 1.6, fx + 4, 6);
+            ctx.closePath(); ctx.fill();
+          }
+          break;
+        }
+        case 'trap': {
+          // armed rune glyph pulsing on the floor
+          const pulse = 0.6 + 0.4 * Math.abs(Math.sin(this.t * 3.2 + pr.id));
+          ctx.globalAlpha = 0.9;
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 12 * pulse;
+          ctx.strokeStyle = c.accent;
+          ctx.lineWidth = 2.4;
+          ctx.beginPath(); ctx.ellipse(0, 6, pr.r * 0.8 * pulse, pr.r * 0.3 * pulse, 0, 0, TAU); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(0, 6, pr.r * 0.5, pr.r * 0.18, 0, this.t * 2, this.t * 2 + 4.5); ctx.stroke();
+          ctx.fillStyle = c.glow;
+          ctx.beginPath(); ctx.arc(0, 4, 3.5 * pulse, 0, TAU); ctx.fill();
+          break;
+        }
+        case 'orbit': {
+          // crystal shard circling its owner
+          ctx.rotate(this.t * 3 + pr.slot * 2);
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 14;
+          ctx.fillStyle = c.primary;
+          ctx.beginPath();
+          ctx.moveTo(0, -pr.r); ctx.lineTo(pr.r * 0.6, 0); ctx.lineTo(0, pr.r * 1.2); ctx.lineTo(-pr.r * 0.6, 0);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.moveTo(0, -pr.r * 0.45); ctx.lineTo(pr.r * 0.26, 0); ctx.lineTo(0, pr.r * 0.55); ctx.lineTo(-pr.r * 0.26, 0);
+          ctx.closePath(); ctx.fill();
+          break;
+        }
+        case 'quake': {
+          // crawling ground shockwave
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 16;
+          const dir = Math.sign(pr.vx) || 1;
+          ctx.scale(dir, 1);
+          ctx.fillStyle = c.accent;
+          for (let w = 0; w < 3; w++) {
+            const wx = -w * 11, wh = pr.r * (1 - w * 0.26);
+            ctx.globalAlpha = 1 - w * 0.3;
+            ctx.beginPath();
+            ctx.moveTo(wx - 9, 12);
+            ctx.quadraticCurveTo(wx, 12 - wh * 1.5, wx + 9, 12);
+            ctx.closePath(); ctx.fill();
+          }
+          ctx.globalAlpha = 0.8;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath();
+          ctx.moveTo(-4, 12); ctx.quadraticCurveTo(1, 12 - pr.r * 1.1, 6, 12);
+          ctx.closePath(); ctx.fill();
+          break;
+        }
+        case 'boom': {
+          // spinning lance
+          ctx.rotate(this.t * 14);
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 14;
+          ctx.strokeStyle = c.accent;
+          ctx.lineWidth = 3.4;
+          ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(-pr.r * 1.5, 0); ctx.lineTo(pr.r * 1.5, 0); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(-pr.r * 1.2, 0); ctx.lineTo(pr.r * 1.2, 0); ctx.stroke();
+          ctx.fillStyle = c.glow;
+          ctx.beginPath(); ctx.arc(0, 0, 3, 0, TAU); ctx.fill();
+          break;
+        }
+        default: {
+          ctx.rotate(Math.atan2(pr.vy, pr.vx));
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 18;
+          const g = ctx.createRadialGradient(0, 0, 1, 0, 0, pr.r * 1.4);
+          g.addColorStop(0, '#ffffff');
+          g.addColorStop(0.45, c.accent);
+          g.addColorStop(1, c.glow + '00');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(0, 0, pr.r * 1.4, 0, TAU); ctx.fill();
+          // tail
+          ctx.globalAlpha = 0.6;
+          const tg = ctx.createLinearGradient(0, 0, -pr.r * 4.5, 0);
+          tg.addColorStop(0, c.accent + 'cc');
+          tg.addColorStop(1, c.accent + '00');
+          ctx.fillStyle = tg;
+          ctx.beginPath();
+          ctx.moveTo(0, -pr.r * 0.7); ctx.lineTo(-pr.r * 4.5, 0); ctx.lineTo(0, pr.r * 0.7);
+          ctx.closePath(); ctx.fill();
+        }
+      }
       ctx.restore();
-      if (Math.random() < 0.4) this.trailPuff(pr.x - pr.vx, pr.y - pr.vy, c.trail);
+      if ((kind === 'shot' || kind === 'boom') && Math.random() < 0.4) {
+        this.trailPuff(pr.x - pr.vx, pr.y - pr.vy, c.trail);
+      }
     }
 
     // fighters (draw dead ones not at all)

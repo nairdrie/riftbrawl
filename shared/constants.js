@@ -86,6 +86,18 @@ export const BODY_PUSH = {
 
 export const TEETER_SPEED = 2.4;  // walking slower than this stops at the edge
 
+// character passives & signature-mechanic tuning
+export const PASSIVE = {
+  STACKS_MAX: 5,        // volt: hits to charge a discharge
+  STACK_BONUS: 4,       // bonus damage on discharge
+  STACK_STUN: 26,       // paralyze ticks (no knockback) on discharge
+  BURN_TICKS: 3,        // ember: damage-over-time tick count
+  BURN_INTERVAL: 30,    // ticks between burn ticks
+  BURN_DMG: 1,          // percent per burn tick
+  FLOAT_TICKS: 55,      // nova: hover budget (hold jump in the air)
+  SURF_MULT: 0.42,      // tide: fall-speed multiplier while holding jump
+};
+
 export const SHIELD_MAX = 60;
 export const SHIELD_DRAIN = 0.22;       // per tick while held
 export const SHIELD_REGEN = 0.10;       // per tick while not shielding

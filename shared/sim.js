@@ -8,7 +8,7 @@ import {
   STAGE, BTN, ACT, PHASE, STOCKS, COUNTDOWN_TICKS,
   RESPAWN_FREEZE, RESPAWN_INVULN, RESPAWN_PLATFORM_TICKS,
   SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELDBREAK_TICKS,
-  LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED, NB_CHARGE,
+  LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED, NB_CHARGE, PASSIVE,
 } from './constants.js';
 import { CHARACTERS } from './characters.js';
 
@@ -25,7 +25,7 @@ export function createPlayer(uid, charId, idx) {
     x: STAGE.spawnX[idx] ?? 0, y: 0, vx: 0, vy: 0,
     facing: (STAGE.spawnX[idx] ?? 0) <= 0 ? 1 : -1,
     percent: 0, stocks: STOCKS,
-    grounded: true, jumpsLeft: 1,
+    grounded: true, jumpsLeft: airJumps(CHARACTERS[charId]),
     act: ACT.FREE, actFrame: 0, moveId: '',
     hitMask: 0, stun: 0, hitlag: 0,
     shield: SHIELD_MAX, invuln: 0,
@@ -34,9 +34,15 @@ export function createPlayer(uid, charId, idx) {
     prevB: 0, prevX: 0,
     dashTimer: 0, ledgeTimer: 0, regrabTimer: 0,
     charge: 0,
+    stacks: 0,                      // volt: static charge
+    burnTicks: 0, burnTimer: 0,     // ember: damage over time on the victim
+    floatT: PASSIVE.FLOAT_TICKS,    // nova: hover budget
+    zx: 0, zy: 0,                   // volt: locked zip direction
     lastIn: { b: 0, x: 0, y: 0 },
   };
 }
+
+function airJumps(char) { return char?.airJumps ?? 1; }
 
 export function createGameState(playerSpecs) {
   // playerSpecs: [{uid, charId}]
@@ -98,6 +104,40 @@ function moveTotal(char, moveId) {
   return isSpecialMove(moveId) ? char.specials[moveId].total : char.moves[moveId].total;
 }
 
+// ── signature-mechanic helpers ──────────────────────────────────────────────
+
+// super armor: knockback below the threshold doesn't flinch (damage still lands)
+function armorThreshold(p, char) {
+  if (p.act !== ACT.ATTACK || !p.moveId) return 0;
+  const d = isSpecialMove(p.moveId) ? char.specials[p.moveId] : char.moves[p.moveId];
+  const a = d?.armor;
+  if (!a) return 0;
+  return p.actFrame >= a.from && p.actFrame <= a.to ? a.thresh : 0;
+}
+
+function counterActive(p, char) {
+  if (p.act !== ACT.ATTACK || p.moveId !== 'db') return false;
+  const sp = char.specials.db;
+  return sp.type === 'counter' && p.actFrame >= sp.from && p.actFrame <= sp.to;
+}
+
+function reflectActive(p, char) {
+  if (p.act !== ACT.ATTACK || p.moveId !== 'db') return false;
+  const rf = char.specials.db.reflect;
+  return !!rf && p.actFrame >= rf.from && p.actFrame <= rf.to;
+}
+
+// fire-and-forget: spawn a lingering fire patch on the floor
+function spawnPatch(state, owner, charId, x, spec) {
+  state.projectiles.push({
+    id: state.nextProjId++, owner, charId, kind: 'patch',
+    x: Math.max(-STAGE.halfWidth + 20, Math.min(STAGE.halfWidth - 20, x)),
+    y: STAGE.floorY - 10, vx: 0, vy: 0, grav: 0,
+    r: spec.r, dmg: spec.dmg, angle: spec.angle, bkb: spec.bkb, kbg: spec.kbg,
+    life: spec.life, cd: 0, slot: 0, aux: spec.cd,
+  });
+}
+
 // Active world-space hitboxes for a player this frame (empty if none).
 export function getActiveHitboxes(p, char) {
   if (p.act !== ACT.ATTACK || p.hitlag > 0) return [];
@@ -105,7 +145,12 @@ export function getActiveHitboxes(p, char) {
   const out = [];
   if (isSpecialMove(p.moveId)) {
     const sp = char.specials[p.moveId];
-    if (sp.type !== 'projectile' && f >= sp.from && f <= sp.to) {
+    // body-hitbox special types only; everything else hits via other systems
+    const bodyHit = sp.type === 'dash' || sp.type === 'recovery' || sp.type === 'burst' ||
+                    sp.type === 'zip' || sp.type === 'pull';
+    let from = sp.from, to = sp.to;
+    if (sp.type === 'pull') from = sp.to - 2;            // detonation only
+    if (bodyHit && !sp.ghost && sp.dmg > 0 && f >= from && f <= to) {
       out.push({
         x: p.x + (sp.dx ?? 0) * p.facing, y: p.y - 40 * char.scale + (sp.dy ?? 0),
         r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg,
@@ -124,22 +169,59 @@ export function getActiveHitboxes(p, char) {
   return out;
 }
 
-function applyHit(target, tChar, hit, dirX, events, state) {
-  target.percent = Math.min(999, target.percent + hit.dmg);
+function applyHit(target, tChar, hit, dirX, events, state, attacker, aChar) {
+  let dmg = hit.dmg;
+
+  // VOLT passive: static stacks — the 5th hit discharges into a paralyzing zap
+  let discharge = false;
+  if (aChar?.passive === 'stacks' && attacker) {
+    if (attacker.stacks >= PASSIVE.STACKS_MAX) {
+      discharge = true;
+      attacker.stacks = 0;
+      dmg += PASSIVE.STACK_BONUS;
+    } else {
+      attacker.stacks++;
+    }
+  }
+  // EMBER passive: hits set the victim burning (DoT, refreshes on hit)
+  if (aChar?.passive === 'burn') {
+    target.burnTicks = PASSIVE.BURN_TICKS;
+    target.burnTimer = PASSIVE.BURN_INTERVAL;
+  }
+
+  target.percent = Math.min(999, target.percent + dmg);
   let kb = knockback(target.percent, tChar.weight, hit.bkb, hit.kbg);
   if (isCrouching(target)) kb *= CROUCH_KB;   // crouch cancel
-  const rad = (hit.angle * Math.PI) / 180;
-  target.vx = Math.cos(rad) * kb * dirX;
-  target.vy = -Math.sin(rad) * kb;
-  target.stun = Math.floor(kb * 2.0 + hit.dmg * 0.4);
-  target.hitlag = Math.min(14, Math.floor(hit.dmg * 0.45) + 2);
+
+  // AEGIS passive: rune armor — weak hits don't flinch him out of his swing
+  const armor = armorThreshold(target, tChar);
+  if (armor && kb < armor && !discharge) {
+    target.hitlag = Math.min(8, Math.floor(dmg * 0.3) + 1);
+    events.push({ type: 'armor', x: target.x, y: target.y - 40, victim: target.idx });
+    events.push({ type: 'hit', x: target.x, y: target.y - 40, dmg, kb: 0, victim: target.idx });
+    return;
+  }
+
+  if (discharge) {
+    // paralyze: damage + long stun, zero launch — a true combo extender
+    target.vx = dirX * 1.2;
+    target.vy = 0;
+    target.stun = PASSIVE.STACK_STUN;
+    events.push({ type: 'discharge', x: target.x, y: target.y - 40, victim: target.idx });
+  } else {
+    const rad = (hit.angle * Math.PI) / 180;
+    target.vx = Math.cos(rad) * kb * dirX;
+    target.vy = -Math.sin(rad) * kb;
+    target.stun = Math.floor(kb * 2.0 + dmg * 0.4);
+  }
+  target.hitlag = Math.min(14, Math.floor(dmg * 0.45) + 2);
   target.act = ACT.HITSTUN;
   target.actFrame = 0;
   target.moveId = '';
   target.fastFalling = false;
   target.charge = 0;
   if (target.vy < 0 && target.grounded) { target.grounded = false; target.y -= 2; }
-  events.push({ type: 'hit', x: target.x, y: target.y - 40, dmg: hit.dmg, kb, victim: target.idx });
+  events.push({ type: 'hit', x: target.x, y: target.y - 40, dmg, kb, victim: target.idx });
 }
 
 function applyShieldHit(target, hit, dirX, events) {
@@ -168,6 +250,16 @@ function updatePlayer(p, inp, char, state, events) {
   if (p.invuln > 0) p.invuln--;
   if (p.act !== ACT.SHIELD) p.shield = Math.min(SHIELD_MAX, p.shield + SHIELD_REGEN);
 
+  // burning ticks away regardless of state (cleared on death)
+  if (p.burnTicks > 0 && p.act !== ACT.DEAD && p.act !== ACT.RESPAWN) {
+    if (--p.burnTimer <= 0) {
+      p.burnTicks--;
+      p.burnTimer = PASSIVE.BURN_INTERVAL;
+      p.percent = Math.min(999, p.percent + PASSIVE.BURN_DMG);
+      events.push({ type: 'burn', x: p.x, y: p.y - 40, victim: p.idx });
+    }
+  }
+
   // hitlag: completely frozen (juice + smash authenticity)
   if (p.hitlag > 0) { p.hitlag--; p.prevB = inp.b; return; }
 
@@ -180,7 +272,9 @@ function updatePlayer(p, inp, char, state, events) {
         p.act = ACT.RESPAWN; p.actFrame = 0;
         p.platTimer = RESPAWN_PLATFORM_TICKS;
         p.invuln = RESPAWN_INVULN;
-        p.jumpsLeft = 1; p.exhausted = false; p.fastFalling = false;
+        p.jumpsLeft = airJumps(char); p.exhausted = false; p.fastFalling = false;
+        p.floatT = PASSIVE.FLOAT_TICKS;
+        p.stacks = 0; p.burnTicks = 0; p.burnTimer = 0;
         p.grounded = false; p.shield = SHIELD_MAX;
       }
       p.prevB = inp.b;
@@ -236,7 +330,7 @@ function updatePlayer(p, inp, char, state, events) {
         const full = (inp.b & BTN.JUMP) !== 0;
         p.vy = -char.jumpVel * (full ? 1 : SHORT_HOP);
         p.grounded = false;
-        p.jumpsLeft = 1;
+        p.jumpsLeft = airJumps(char);
         p.act = ACT.FREE; p.actFrame = 0;
         events.push({ type: 'jump', x: p.x, y: p.y, who: p.idx });
       }
@@ -247,29 +341,143 @@ function updatePlayer(p, inp, char, state, events) {
       const f = p.actFrame;
       if (isSpecialMove(p.moveId)) {
         const sp = char.specials[p.moveId];
-        if (sp.type === 'projectile' && f === sp.fire &&
+        const chargeable = sp.type === 'projectile' || sp.type === 'quake' || sp.type === 'boom';
+        if (chargeable && f === sp.fire &&
             (inp.b & BTN.SPECIAL) && p.charge < NB_CHARGE.max) {
           // holding special: charge instead of firing
           p.actFrame = sp.fire - 1;
           p.charge++;
-        } else if (sp.type === 'projectile' && f === sp.fire) {
+        } else if (chargeable && f === sp.fire) {
           const t = p.charge / NB_CHARGE.max;
-          state.projectiles.push({
-            id: state.nextProjId++, owner: p.idx, charId: p.charId,
+          const pr = {
+            id: state.nextProjId++, owner: p.idx, charId: p.charId, kind: 'shot',
             x: p.x + p.facing * 46 * char.scale, y: p.y - 42 * char.scale,
-            vx: sp.speed * (1 + NB_CHARGE.speed * t) * p.facing, vy: sp.vy0, grav: sp.grav,
+            vx: sp.speed * (1 + NB_CHARGE.speed * t) * p.facing, vy: sp.vy0 ?? 0, grav: sp.grav ?? 0,
             r: sp.r * (1 + NB_CHARGE.size * t),
             dmg: sp.dmg * (1 + NB_CHARGE.dmg * t),
             angle: sp.angle,
             bkb: sp.bkb * (1 + NB_CHARGE.kb * t),
             kbg: sp.kbg * (1 + NB_CHARGE.kb * t),
-            life: sp.life,
-          });
+            life: sp.life, cd: 0, slot: 0, aux: 0,
+          };
+          if (sp.type === 'quake') {
+            // ground shockwave: crawls along the floor, dies at the edge
+            pr.kind = 'quake';
+            pr.y = STAGE.floorY - 12;
+            pr.vy = 0;
+            pr.grav = p.grounded ? 0 : 0.6;          // airborne cast drops to the floor
+            if (!p.grounded) pr.y = p.y - 20;
+          } else if (sp.type === 'boom') {
+            // boomerang: decelerates, then returns to its owner
+            pr.kind = 'boom';
+            pr.aux = sp.decel;
+          }
+          state.projectiles.push(pr);
           events.push({ type: 'shoot', x: p.x, y: p.y - 42, who: p.idx, charge: t });
           p.charge = 0;
+        } else if (sp.type === 'orbit' && f === sp.fire) {
+          // NOVA: spawn an orbiting shard (max 3); at 3, launch the oldest
+          const mine = state.projectiles.filter(q => q.kind === 'orbit' && q.owner === p.idx);
+          if (mine.length < 3) {
+            const used = mine.map(q => q.slot);
+            let slot = 0;
+            while (used.includes(slot)) slot++;
+            state.projectiles.push({
+              id: state.nextProjId++, owner: p.idx, charId: p.charId, kind: 'orbit',
+              x: p.x, y: p.y - 44 * char.scale, vx: 0, vy: 0, grav: 0,
+              r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg,
+              life: 9999, cd: 0, slot, aux: 0,
+            });
+            events.push({ type: 'shard', x: p.x, y: p.y - 44, who: p.idx });
+          } else {
+            let oldest = mine[0];
+            for (const q of mine) if (q.id < oldest.id) oldest = q;
+            oldest.kind = 'shot';
+            oldest.vx = sp.launchSpeed * p.facing;
+            oldest.vy = 0;
+            oldest.dmg = sp.launchDmg;
+            oldest.bkb = sp.launchBkb;
+            oldest.kbg = sp.launchKbg;
+            oldest.life = sp.launchLife;
+            events.push({ type: 'shoot', x: oldest.x, y: oldest.y, who: p.idx, charge: 0 });
+          }
+        } else if (sp.type === 'teleport' && f === sp.warp) {
+          // VOLT: vanish and reappear ahead — zap everyone along the path
+          const x0 = p.x;
+          const x1 = Math.max(-STAGE.blastX + 120, Math.min(STAGE.blastX - 120, p.x + sp.dist * p.facing));
+          p.x = x1;
+          p.vy = Math.min(p.vy, 0);
+          p.invuln = Math.max(p.invuln, sp.iframes);
+          for (const tgt of state.players) {
+            if (tgt.idx === p.idx || (p.hitMask & (1 << tgt.idx))) continue;
+            if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
+            const lo = Math.min(x0, x1) - 20, hi = Math.max(x0, x1) + 20;
+            if (tgt.x > lo && tgt.x < hi && Math.abs((tgt.y - 40) - (p.y - 40)) < 70) {
+              p.hitMask |= 1 << tgt.idx;
+              const tChar = CHARACTERS[tgt.charId];
+              const dirX = Math.sign(x1 - x0) || p.facing;
+              if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, sp, dirX, events);
+              else applyHit(tgt, tChar, sp, dirX, events, state, p, char);
+            }
+          }
+          events.push({ type: 'teleport', x: x0, y: p.y - 40, x2: x1, who: p.idx });
+        } else if (sp.type === 'zip') {
+          // VOLT: angle-able zip — locks the held direction at startup
+          if (f === sp.from) {
+            let zx = inp.x, zy = inp.y;
+            const m = Math.hypot(zx, zy);
+            if (m < 0.3) { zx = 0; zy = -1; }
+            else { zx /= m; zy /= m; }
+            p.zx = zx; p.zy = zy;
+            p.exhausted = true;
+            if (zy < -0.1) p.grounded = false;
+            events.push({ type: 'recover', x: p.x, y: p.y, who: p.idx });
+          }
+          if (f >= sp.from && f <= sp.to) {
+            p.vx = p.zx * sp.speed;
+            p.vy = p.zy * sp.speed;
+          } else if (f === sp.to + 1) {
+            p.vx *= 0.4; p.vy *= 0.4;
+          }
+        } else if (sp.type === 'hopback') {
+          // EMBER: retreating hop that leaves a fire wall where she stood
+          if (f === sp.from) {
+            spawnPatch(state, p.idx, p.charId, p.x + p.facing * 6, sp.patch);
+            p.vy = -sp.hop;
+            p.grounded = false;
+            events.push({ type: 'shoot', x: p.x, y: p.y - 20, who: p.idx, charge: 0 });
+          }
+          if (f >= sp.from && f <= sp.to) p.vx = -sp.speed * p.facing;
+        } else if (sp.type === 'trap' && f === sp.plant) {
+          // EMBER: plant a geyser glyph (one at a time — replanting moves it)
+          for (let i = state.projectiles.length - 1; i >= 0; i--) {
+            const q = state.projectiles[i];
+            if (q.kind === 'trap' && q.owner === p.idx) state.projectiles.splice(i, 1);
+          }
+          state.projectiles.push({
+            id: state.nextProjId++, owner: p.idx, charId: p.charId, kind: 'trap',
+            x: Math.max(-STAGE.halfWidth + 24, Math.min(STAGE.halfWidth - 24, p.x + p.facing * 36)),
+            y: STAGE.floorY - 10, vx: 0, vy: 0, grav: 0,
+            r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg,
+            life: sp.life, cd: 20, slot: 0, aux: 0,       // cd: arm delay
+          });
+          events.push({ type: 'plant', x: p.x + p.facing * 36, y: STAGE.floorY - 10, who: p.idx });
+        } else if (sp.type === 'pull' && f >= sp.from && f <= sp.to) {
+          // NOVA: black hole — drag enemies toward her before the detonation
+          for (const tgt of state.players) {
+            if (tgt.idx === p.idx) continue;
+            if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
+            const dx = p.x - tgt.x, dy = (p.y - 40) - (tgt.y - 40);
+            const d = Math.hypot(dx, dy);
+            if (d > sp.pullR || d < 6) continue;
+            const k = sp.pullAccel * (1 - d / sp.pullR * 0.5);
+            tgt.vx += (dx / d) * k;
+            if (!tgt.grounded) tgt.vy += (dy / d) * k * 0.8;
+          }
         } else if (sp.type === 'dash' && f >= sp.from && f <= sp.to) {
           p.vx = sp.speed * p.facing;
           p.vy = Math.min(p.vy, 0.5);
+          if (sp.ghost) p.invuln = Math.max(p.invuln, 2);   // intangible pass-through
         } else if (sp.type === 'recovery') {
           if (f === sp.from) {
             p.vy = sp.vy;
@@ -395,6 +603,17 @@ function updatePlayer(p, inp, char, state, events) {
           p.vy = Math.max(p.vy, char.fastFall * 0.92);
           events.push({ type: 'ffall', x: p.x, y: p.y, who: p.idx });
         }
+        // NOVA: float — hold jump past the apex to hover (budgeted)
+        if (char.float && (inp.b & BTN.JUMP) && !(pressed & BTN.JUMP) &&
+            p.vy >= 0 && !p.fastFalling && p.floatT > 0) {
+          p.vy = -char.gravity + 0.06;     // gravity nets out to a gentle sink
+          p.floatT--;
+        }
+        // TIDE: surf — hold jump while falling to glide down slowly
+        if (char.surf && (inp.b & BTN.JUMP) && !(pressed & BTN.JUMP) &&
+            p.vy > 0 && !p.fastFalling) {
+          p.vy = Math.min(p.vy, char.fallSpeed * PASSIVE.SURF_MULT - char.gravity);
+        }
       }
       break;
     }
@@ -422,8 +641,9 @@ function tryLedgeGrab(p, char, events) {
       p.vx = 0; p.vy = 0;
       p.facing = -side;                          // face the stage
       p.invuln = Math.max(p.invuln, LEDGE.invuln);
-      p.jumpsLeft = 1;                           // the ledge refreshes you
+      p.jumpsLeft = airJumps(char);              // the ledge refreshes you
       p.exhausted = false;
+      p.floatT = PASSIVE.FLOAT_TICKS;
       p.fastFalling = false;
       p.ledgeTimer = LEDGE.maxHang;
       events.push({ type: 'ledge', x: p.x, y: p.y, who: p.idx });
@@ -502,8 +722,9 @@ function physics(p, char, events) {
     p.vy = 0;
     p.grounded = true;
     p.fastFalling = false;
-    p.jumpsLeft = 1;
+    p.jumpsLeft = airJumps(char);
     p.exhausted = false;
+    p.floatT = PASSIVE.FLOAT_TICKS;
     if (p.act === ACT.HITSTUN && p.stun > 12) {
       // tech-less landing: bounce slightly & keep brief stun
       p.stun = Math.min(p.stun, 12);
@@ -543,6 +764,7 @@ function checkBlast(p, state, events) {
   p.actFrame = 0;
   p.respawnTimer = RESPAWN_FREEZE;
   p.vx = 0; p.vy = 0; p.stun = 0; p.hitlag = 0; p.moveId = '';
+  p.stacks = 0; p.burnTicks = 0; p.burnTimer = 0;
   p.x = 0; p.y = -2000; // park offscreen
 }
 
@@ -599,10 +821,21 @@ export function step(state, inputs) {
         if (dx * dx + dy * dy <= (h.r + hr) * (h.r + hr)) {
           atk.hitMask |= 1 << tgt.idx;
           const dirX = tgt.x === atk.x ? atk.facing : Math.sign(tgt.x - atk.x);
-          if (tgt.act === ACT.SHIELD && tgt.grounded) {
+          if (counterActive(tgt, tChar)) {
+            // AEGIS: Verdict Counter — negate the blow, return it harder
+            const sp = tChar.specials.db;
+            tgt.invuln = Math.max(tgt.invuln, 26);
+            tgt.actFrame = Math.max(tgt.actFrame, sp.to + 1);   // stance spent
+            const back = Math.sign(atk.x - tgt.x) || tgt.facing;
+            tgt.facing = back;                                  // turn to face the attacker
+            applyHit(atk, aChar,
+              { dmg: Math.max(sp.minDmg, h.dmg * sp.mult), angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg },
+              back, events, state, tgt, tChar);
+            events.push({ type: 'counter', x: tgt.x, y: tgt.y - 40, who: tgt.idx });
+          } else if (tgt.act === ACT.SHIELD && tgt.grounded) {
             applyShieldHit(tgt, h, dirX, events);
           } else {
-            applyHit(tgt, tChar, h, dirX, events, state);
+            applyHit(tgt, tChar, h, dirX, events, state, atk, aChar);
             atk.hitlag = Math.min(12, Math.floor(h.dmg * 0.4) + 1);
           }
           break;
@@ -611,20 +844,71 @@ export function step(state, inputs) {
     }
   }
 
-  // 3. projectiles
+  // 3. projectiles (kind-aware: shot, quake, boom, patch, trap, orbit)
   for (let i = state.projectiles.length - 1; i >= 0; i--) {
     const pr = state.projectiles[i];
-    pr.vy += pr.grav;
-    pr.x += pr.vx;
-    pr.y += pr.vy;
-    pr.life--;
+    const kind = pr.kind || 'shot';
+    const owner = state.players[pr.owner];
+    const oChar = owner ? CHARACTERS[owner.charId] : null;
+
+    // ── movement per kind ──
+    if (kind === 'orbit') {
+      // shards circle their owner as a moving shield
+      if (!owner || owner.act === ACT.DEAD) { state.projectiles.splice(i, 1); continue; }
+      const a = state.frame * 0.085 + pr.slot * ((Math.PI * 2) / 3);
+      pr.x = owner.x + Math.cos(a) * 56;
+      pr.y = owner.y - 44 * oChar.scale + Math.sin(a) * 20;
+    } else if (kind === 'boom') {
+      // boomerang: decelerate going out, then chase the owner's hand
+      if (pr.cd === 0) {
+        pr.vx -= Math.sign(pr.vx) * pr.aux;
+        if (Math.abs(pr.vx) < 0.6) pr.cd = 1;             // turn around
+      } else if (owner && owner.act !== ACT.DEAD) {
+        const hx = owner.x, hy = owner.y - 40;
+        pr.vx += Math.sign(hx - pr.x) * 1.0;
+        pr.vx = Math.max(-16, Math.min(16, pr.vx));
+        pr.y += (hy - pr.y) * 0.1;
+        if (Math.abs(hx - pr.x) < 30 && Math.abs(hy - pr.y) < 50) {
+          state.projectiles.splice(i, 1);                  // caught!
+          events.push({ type: 'catch', x: pr.x, y: pr.y, who: pr.owner });
+          continue;
+        }
+      }
+      pr.x += pr.vx;
+    } else if (kind === 'patch' || kind === 'trap') {
+      // stationary floor hazards
+      if (pr.cd > 0) pr.cd--;
+    } else {
+      pr.vy += pr.grav;
+      pr.x += pr.vx;
+      pr.y += pr.vy;
+      if (kind === 'quake' && pr.y >= STAGE.floorY - 12 &&
+          pr.x > -STAGE.halfWidth && pr.x < STAGE.halfWidth) {
+        pr.y = STAGE.floorY - 12;                          // hug the floor
+        pr.vy = 0; pr.grav = 0;
+      }
+    }
+    if (kind !== 'orbit') pr.life--;
     let dead = pr.life <= 0;
-    // stage collision
-    if (!dead && pr.y > STAGE.floorY - 4 && pr.x > -STAGE.halfWidth && pr.x < STAGE.halfWidth) {
+
+    // ── environment death per kind ──
+    if (!dead && kind === 'shot' &&
+        pr.y > STAGE.floorY - 4 && pr.x > -STAGE.halfWidth && pr.x < STAGE.halfWidth) {
       dead = true;
       events.push({ type: 'projhit', x: pr.x, y: STAGE.floorY, charId: pr.charId });
+      // EMBER: wildfire orb leaves a burning patch where it lands
+      const patch = oChar?.specials?.nb?.patch;
+      if (patch && pr.charId === 'ember') spawnPatch(state, pr.owner, pr.charId, pr.x, patch);
     }
-    if (!dead && (pr.x < -STAGE.blastX || pr.x > STAGE.blastX || pr.y > STAGE.blastBottom)) dead = true;
+    if (!dead && kind === 'quake' &&
+        (pr.x < -STAGE.halfWidth || pr.x > STAGE.halfWidth) && pr.y >= STAGE.floorY - 14) {
+      dead = true;                                          // crawled off the edge
+      events.push({ type: 'projhit', x: pr.x, y: pr.y, charId: pr.charId });
+    }
+    if (!dead && kind !== 'patch' && kind !== 'trap' && kind !== 'orbit' &&
+        (pr.x < -STAGE.blastX || pr.x > STAGE.blastX || pr.y > STAGE.blastBottom)) dead = true;
+
+    // ── player interaction ──
     if (!dead) {
       for (const tgt of state.players) {
         if (tgt.idx === pr.owner) continue;
@@ -634,14 +918,51 @@ export function step(state, inputs) {
         const cx = tgt.x, cy = tgt.y - (crouched ? 28 : 40) * tChar.scale;
         const thr = tChar.hurtR * (crouched ? 0.85 : 1);
         const dx = pr.x - cx, dy = pr.y - cy;
-        if (dx * dx + dy * dy <= (pr.r + thr) * (pr.r + thr)) {
-          const dirX = pr.vx === 0 ? 1 : Math.sign(pr.vx);
+        if (dx * dx + dy * dy > (pr.r + thr) * (pr.r + thr)) continue;
+        const dirX = pr.vx === 0 ? Math.sign(cx - pr.x) || 1 : Math.sign(pr.vx);
+
+        // TIDE: Whirlpool Guard sends projectiles back at 1.2× power
+        if ((kind === 'shot' || kind === 'quake' || kind === 'boom') && reflectActive(tgt, tChar)) {
+          pr.owner = tgt.idx;
+          pr.charId = tgt.charId;
+          pr.kind = 'shot';
+          pr.vx = -dirX * Math.max(7, Math.abs(pr.vx) * 1.1);
+          pr.vy = Math.min(pr.vy, 0);
+          pr.grav = 0;
+          pr.dmg *= 1.2;
+          pr.life = Math.max(pr.life, 70);
+          events.push({ type: 'reflect', x: pr.x, y: pr.y, who: tgt.idx });
+          break;
+        }
+        // AEGIS: counter stance simply annuls projectiles
+        if (counterActive(tgt, tChar)) {
+          tgt.invuln = Math.max(tgt.invuln, 16);
+          dead = true;
+          events.push({ type: 'counter', x: tgt.x, y: tgt.y - 40, who: tgt.idx });
+          break;
+        }
+
+        if (kind === 'patch') {
+          if (pr.cd > 0) break;                             // re-hit cooldown
           if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, pr, dirX, events);
-          else applyHit(tgt, tChar, pr, dirX, events, state);
-          events.push({ type: 'projhit', x: pr.x, y: pr.y, charId: pr.charId });
+          else applyHit(tgt, tChar, pr, dirX, events, state, owner, oChar);
+          pr.cd = pr.aux;                                   // patches persist
+          events.push({ type: 'projhit', x: pr.x, y: pr.y - 10, charId: pr.charId });
+          break;
+        }
+        if (kind === 'trap') {
+          if (pr.cd > 0) break;                             // still arming
+          if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, pr, dirX, events);
+          else applyHit(tgt, tChar, pr, dirX, events, state, owner, oChar);
+          events.push({ type: 'erupt', x: pr.x, y: pr.y, charId: pr.charId });
           dead = true;
           break;
         }
+        if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, pr, dirX, events);
+        else applyHit(tgt, tChar, pr, dirX, events, state, owner, oChar);
+        events.push({ type: 'projhit', x: pr.x, y: pr.y, charId: pr.charId });
+        dead = true;
+        break;
       }
     }
     if (dead) state.projectiles.splice(i, 1);
@@ -674,6 +995,7 @@ const P_FIELDS = [
   'act', 'actFrame', 'hitMask', 'stun', 'hitlag', 'shield', 'invuln',
   'respawnTimer', 'platTimer', 'prevB', 'prevX', 'dashTimer',
   'ledgeTimer', 'regrabTimer', 'charge',
+  'stacks', 'burnTicks', 'burnTimer', 'floatT', 'zx', 'zy',
 ];
 
 export function serializeState(state) {
@@ -689,6 +1011,7 @@ export function serializeState(state) {
     pr: state.projectiles.map(pr => [
       pr.id, pr.owner, pr.charId, pr.x, pr.y, pr.vx, pr.vy, pr.grav,
       pr.r, pr.dmg, pr.angle, pr.bkb, pr.kbg, pr.life,
+      pr.kind || 'shot', pr.cd || 0, pr.slot || 0, pr.aux || 0,
     ]),
   };
 }
@@ -708,6 +1031,7 @@ export function deserializeState(s) {
     projectiles: s.pr.map(a => ({
       id: a[0], owner: a[1], charId: a[2], x: a[3], y: a[4], vx: a[5], vy: a[6],
       grav: a[7], r: a[8], dmg: a[9], angle: a[10], bkb: a[11], kbg: a[12], life: a[13],
+      kind: a[14] ?? 'shot', cd: a[15] ?? 0, slot: a[16] ?? 0, aux: a[17] ?? 0,
     })),
   };
 }
