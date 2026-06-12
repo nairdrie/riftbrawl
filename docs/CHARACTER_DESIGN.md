@@ -121,14 +121,33 @@ end-game once designs are locked. Don't start here; iterate on designs in A or B
 the Knight via `GLTFLoader` + `AnimationMixer`, with idle/run/jump clips driven by
 the existing input code.
 
+## Combat (implemented)
+
+Movesets live in `public/characters.js` and run in `Player.js`:
+
+- **Knockback** is Smash-flavored: `(baseKb + targetDamage% * kbGrowth) / targetWeight`,
+  launched at the move's angle. Damage resets on KO (falling off and respawning).
+- **F = attack, G = special.** Melee moves have startup/active windows; bolts spawn
+  real projectiles owned by the attacker's client.
+- **Kit verbs**: Bastion holds G to block (no flinch; chip damage only; F mid-block =
+  Shield Bash). Korga's knockback grows with her own damage (rage) and Whirlwind
+  travels while hitting. Elara's two bolts trade speed for power. Whisper's hits from
+  behind do double (backstab) and Smoke Bomb makes him briefly intangible.
+- **Netplay**: each client simulates its own fighter and publishes position + clip +
+  damage; hits are relayed peer-to-peer through the server (`attackHit` → `hitReceived`),
+  with the receiver applying its own block/intangibility rules.
+- **Physics are delta-time scaled** — same game speed at any refresh rate.
+
 ## Running it
 
 ```
 node server.js
-  → http://localhost:3000              the game (Bastion playable)
+  → http://localhost:3000              the game: character select, then fight
+  → http://localhost:3000/?training    same, plus a practice dummy that takes real hits
   → http://localhost:3000/adventurers.html   roster & kit showcase
   → http://localhost:3000/characters.html    earlier procedural prototypes
 ```
 
-Showcase controls: `1`-`4` select · `R` run · `Space` jump · `F` attack ·
+In-game: `←→`/`AD` move · `Space` jump (×2) · `F` attack · `G` special (hold to
+block as Bastion). Showcase: `1`-`4` select · `R` run · `Space` jump · `F` attack ·
 `G` special · `H` hit reaction · `K` KO (and get back up) · `X` idle.

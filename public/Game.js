@@ -2,70 +2,83 @@
 
 import { Player } from "./Player.js";
 import { Stage } from "./Stage.js";
+import { Effects, Projectile } from "./effects.js";
+import { CHARACTERS } from "./characters.js";
 
 export class Game {
-  constructor() {
-    this.initSocket()
+  constructor(characterId) {
+    this.def = CHARACTERS[characterId] || CHARACTERS.bastion;
+    this.shake = 0;
+
     this.initScene();
-    this.initPlayer();
     this.initStage();
     this.initLights();
+    this.effects = new Effects(this.scene);
+    this.projectiles = [];
+    this.initPlayer();
     this.initControls();
+    this.initSocket();
+    this.initHud();
 
-    document.addEventListener("DOMContentLoaded", () => {
-      document
-        .getElementById("startButton")
-        .addEventListener("click", () => {
-          document.getElementById("startMenu").style.display = "none";
-          this.animate();
-        });
-    });
+    // ?training spawns a punching bag that takes real knockback
+    if (location.search.includes("training")) {
+      this.dummy = new Player(3, 5, -1.5, CHARACTERS.korga);
+      this.scene.add(this.dummy.group);
+    }
+  }
+
+  start() {
+    this.clock = new THREE.Clock();
+    this.animate();
   }
 
   initSocket() {
-    this.socket = io("http://localhost:3000");
-  
-    // Store other players in a dictionary
+    this.socket = io();
     this.otherPlayers = {};
-  
-    // Listen for updates from the server
-    this.socket.on('gameStateUpdate', (gameState) => {
-      // Update the game state based on the server's data
+
+    this.socket.on("gameStateUpdate", (gameState) => {
       this.updateGameState(gameState);
     });
+
+    this.socket.on("hitReceived", (hit) => {
+      if (this.player.receiveHit(hit, this.effects)) this.addShake(0.1);
+    });
+
+    this.socket.on("effect", (e) => this.spawnRemoteEffect(e));
   }
 
   updateGameState(gameState) {
-    // The local player is simulated locally; applying the server echo here
-    // would teleport it back to the server's stale position every frame.
-    // (Server reconciliation can come back once GameState simulates properly.)
-
-    // Loop through other players in the game state
+    // The local player is simulated locally; remote players are rendered
+    // from the states their own clients publish.
     for (const socketId in gameState) {
-      if (socketId === this.socket.id) {
-        // Skip the main player
-        continue;
+      if (socketId === this.socket.id) continue;
+      const state = gameState[socketId];
+      if (!state.character) continue; // still on the select screen
+
+      let other = this.otherPlayers[socketId];
+      if (!other) {
+        const def = CHARACTERS[state.character];
+        if (!def) continue;
+        other = new Player(state.position.x, state.position.y, state.position.z, def);
+        this.otherPlayers[socketId] = other;
+        this.scene.add(other.group);
       }
-  
-      let otherPlayer = this.otherPlayers[socketId];
-  
-      // If the other player doesn't exist, create and add it to the scene
-      if (!otherPlayer) {
-        otherPlayer = new Player(0, 5, -1.5);
-        this.otherPlayers[socketId] = otherPlayer;
-        this.scene.add(otherPlayer.group);
-      }
-  
-      // Update other player from game state
-      otherPlayer.updateFromGameState(gameState[socketId]);
+      other.netState = state;
     }
-  
-    // Remove disconnected players
+
     for (const socketId in this.otherPlayers) {
       if (!gameState[socketId]) {
         this.scene.remove(this.otherPlayers[socketId].group);
         delete this.otherPlayers[socketId];
       }
+    }
+  }
+
+  spawnRemoteEffect(e) {
+    if (e.type === "bolt") {
+      this.projectiles.push(new Projectile(this.scene, e));
+    } else if (e.type === "puff") {
+      this.effects.puff(new THREE.Vector3(e.x, e.y, e.z), e.color, 12, 1.6, 0.18, 0.8);
     }
   }
 
@@ -88,10 +101,16 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(this.renderer.domElement);
+
+    window.addEventListener("resize", () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
   }
 
   initPlayer() {
-    this.player = new Player(0, 5, -1.5);
+    this.player = new Player(0, 5, -1.5, this.def, { isLocal: true });
     this.scene.add(this.player.group);
   }
 
@@ -125,42 +144,131 @@ export class Game {
       Space: false,
       KeyA: false,
       KeyD: false,
+      KeyF: false,
+      KeyG: false,
       spaceJustPressed: false,
+      fJustPressed: false,
+      gJustPressed: false,
     };
 
     document.addEventListener("keydown", (event) => {
       this.keysPressed[event.code] = true;
-      if (event.code === "Space") {
-        this.keysPressed.spaceJustPressed = true;
-      }
+      if (event.repeat) return;
+      if (event.code === "Space") this.keysPressed.spaceJustPressed = true;
+      if (event.code === "KeyF") this.keysPressed.fJustPressed = true;
+      if (event.code === "KeyG") this.keysPressed.gJustPressed = true;
     });
 
     document.addEventListener("keyup", (event) => {
       this.keysPressed[event.code] = false;
-      if (event.code === "Space") {
-        this.keysPressed.spaceJustPressed = false;
-      }
+      if (event.code === "Space") this.keysPressed.spaceJustPressed = false;
     });
+  }
+
+  initHud() {
+    this.hud = document.getElementById("hud");
+  }
+
+  updateHud() {
+    if (!this.hud) return;
+    const rows = [[this.def, this.player.damage]];
+    if (this.dummy) rows.push([this.dummy.def, this.dummy.damage]);
+    for (const [socketId, other] of Object.entries(this.otherPlayers)) {
+      rows.push([other.def, other.damage]);
+    }
+    this.hud.innerHTML = rows.map(([def, dmg], i) => {
+      const d = Math.round(dmg);
+      const g = Math.max(0, 235 - d * 2.2);
+      return `<div class="hudRow"><span class="hudName" style="color:${def.color}">${def.name}${i === 0 ? " (you)" : ""}</span>` +
+             `<span class="hudPct" style="color:rgb(255,${g},${g})">${d}%</span></div>`;
+    }).join("");
+  }
+
+  addShake(s) {
+    this.shake = Math.max(this.shake, s);
+  }
+
+  combatContext() {
+    const targets = Object.values(this.otherPlayers);
+    if (this.dummy) targets.push(this.dummy);
+
+    return {
+      targets,
+      effects: this.effects,
+      onHit: (target, hit, impactPos) => {
+        this.effects.puff(impactPos, hit.backstab ? 0xffe066 : 0xffe9a8, 6, 2.2, 0.06, 0.35);
+        this.addShake(0.07);
+        this.deliverHit(target, hit);
+      },
+      spawnBolt: (owner, move) => {
+        const p = owner.group.position;
+        const spawn = {
+          type: "bolt",
+          x: p.x + owner.facing * 0.6, y: p.y + 1.25, z: p.z,
+          dir: owner.facing,
+          move: { speed: move.speed, radius: move.radius, lifeS: move.lifeS },
+          color: owner.def.color,
+        };
+        const bolt = new Projectile(this.scene, spawn);
+        bolt.owner = owner;
+        bolt.moveDef = move;
+        this.projectiles.push(bolt);
+        this.effects.puff(new THREE.Vector3(spawn.x, spawn.y, spawn.z), owner.def.color, 5, 1.2, 0.05, 0.3);
+        this.socket.emit("effect", spawn);
+      },
+      emitEffect: (e) => this.socket.emit("effect", e),
+    };
+  }
+
+  deliverHit(target, hit) {
+    if (target === this.dummy) {
+      target.receiveHit(hit, this.effects);
+      return;
+    }
+    for (const [socketId, other] of Object.entries(this.otherPlayers)) {
+      if (other === target) {
+        this.socket.emit("attackHit", { targetId: socketId, hit });
+        return;
+      }
+    }
   }
 
   animate() {
     requestAnimationFrame(() => this.animate());
 
-    if (!this.clock) this.clock = new THREE.Clock();
     const dt = Math.min(this.clock.getDelta(), 0.05);
+    const ctx = this.combatContext();
 
-    // Emit player actions to the server
-    this.socket.emit('playerAction', {
-      keysPressed: this.keysPressed
-    });
+    this.player.animate(this.keysPressed, this.stage, this.camera, dt, ctx);
+    if (this.dummy) this.dummy.animate({}, this.stage, this.camera, dt);
 
-    this.player.animate(this.keysPressed, this.stage, this.camera, dt);
-
-    // Keep other players' animations running
+    // remote players render the states their clients publish
     for (const socketId in this.otherPlayers) {
       const other = this.otherPlayers[socketId];
-      if (other.mixer) other.mixer.update(dt);
+      if (other.netState) other.applyNetState(other.netState, dt);
     }
+
+    // projectiles: only the owner's client deals damage
+    for (let i = this.projectiles.length - 1; i >= 0; i--) {
+      const proj = this.projectiles[i];
+      proj.update(dt, proj.owner ? ctx.targets : [], (target, pos) => {
+        const hit = proj.owner.computeHit(proj.moveDef, target);
+        this.effects.puff(pos, 0xffe9a8, 8, 2.4, 0.07, 0.4);
+        this.addShake(0.06);
+        this.deliverHit(target, hit);
+      });
+      if (!proj.alive) this.projectiles.splice(i, 1);
+    }
+
+    this.effects.update(dt);
+    this.updateHud();
+
+    // publish our state
+    this.socket.emit("playerAction", { state: this.player.getNetState() });
+
+    this.shake = Math.max(0, this.shake - dt * 0.4);
+    this.camera.position.y = 4 + (Math.random() - 0.5) * this.shake;
+    this.camera.position.z = 10 + (Math.random() - 0.5) * this.shake * 0.5;
 
     this.renderer.render(this.scene, this.camera);
   }

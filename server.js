@@ -28,11 +28,21 @@ io.on('connection', (socket) => {
 
     // Listen for player actions
     socket.on('playerAction', (action) => {
-        // Update the game state based on the player's actions
-        gameState.updatePlayer(socket.id, action);
+        // Store the client's published state and rebroadcast to everyone
+        gameState.updatePlayer(socket.id, action.state);
 
         // Broadcast the updated game state to all connected clients
         io.emit('gameStateUpdate', gameState.getState());
+    });
+
+    // Relay a landed hit to the client that owns the target fighter
+    socket.on('attackHit', ({ targetId, hit }) => {
+        io.to(targetId).emit('hitReceived', hit);
+    });
+
+    // Relay cosmetic effects (projectiles, smoke) to everyone else
+    socket.on('effect', (effect) => {
+        socket.broadcast.emit('effect', effect);
     });
 
     // Handle disconnection

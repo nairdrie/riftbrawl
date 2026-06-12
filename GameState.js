@@ -2,34 +2,38 @@ class GameState {
     constructor() {
       this.players = {};
     }
-  
+
     addPlayer(socketId, initialPosition) {
       this.players[socketId] = {
+        character: null, // set once the player picks a fighter and starts
         position: initialPosition,
-        rotation: { y: 0 },
+        facing: 1,
+        clip: 'Idle',
+        ghost: false,
+        blocking: false,
+        damage: 0,
       };
     }
-  
+
     removePlayer(socketId) {
       delete this.players[socketId];
     }
-  
-    updatePlayer(socketId, action) {
+
+    // Clients are authoritative over their own fighter; the server stores
+    // and rebroadcasts the latest published state.
+    updatePlayer(socketId, state) {
       const player = this.players[socketId];
-  
-      if (!player) {
+
+      if (!player || !state) {
         return;
       }
-  
-      // Update player position and rotation based on the action
-      // This should be implemented based on your game logic
-      player.position.x += action.keysPressed.ArrowRight ? 0.1 : 0;
-      player.rotation.y += action.keysPressed.ArrowRight ? 0.1 : 0;
+
+      Object.assign(player, state);
     }
-  
+
     getState() {
       return this.players;
     }
   }
-  
+
   module.exports = GameState;
