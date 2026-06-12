@@ -36,12 +36,10 @@ export class Game {
   }
 
   updateGameState(gameState) {
-    // Update the main player
-    const mainPlayerData = gameState[this.socket.id];
-    if (mainPlayerData) {
-      this.player.updateFromGameState(mainPlayerData);
-    }
-  
+    // The local player is simulated locally; applying the server echo here
+    // would teleport it back to the server's stale position every frame.
+    // (Server reconciliation can come back once GameState simulates properly.)
+
     // Loop through other players in the game state
     for (const socketId in gameState) {
       if (socketId === this.socket.id) {
@@ -82,8 +80,13 @@ export class Game {
     this.camera.position.y = 4;
     this.camera.position.z = 10;
 
-    this.renderer = new THREE.WebGLRenderer();
+    this.scene.background = new THREE.Color(0x12141f);
+    this.scene.fog = new THREE.Fog(0x12141f, 18, 40);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     document.body.appendChild(this.renderer.domElement);
   }
 
@@ -98,16 +101,21 @@ export class Game {
   }
 
   initLights() {
-    const ambientLight = new THREE.AmbientLight(0x404040, 1);
-    this.scene.add(ambientLight);
+    this.scene.add(new THREE.HemisphereLight(0xbcc8ff, 0x33363f, 0.85));
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5, 15);
-    directionalLight.position.set(1, 1, 1);
-    this.scene.add(directionalLight);
+    const keyLight = new THREE.DirectionalLight(0xfff1de, 1.0);
+    keyLight.position.set(4, 9, 6);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(2048, 2048);
+    keyLight.shadow.camera.left = -12;
+    keyLight.shadow.camera.right = 12;
+    keyLight.shadow.camera.top = 12;
+    keyLight.shadow.camera.bottom = -12;
+    this.scene.add(keyLight);
 
-    const pointLight = new THREE.PointLight(0xffffff, 0.5, 15);
-    pointLight.position.set(0, 5, 0);
-    this.scene.add(pointLight);
+    const rimLight = new THREE.DirectionalLight(0x5d7bff, 0.5);
+    rimLight.position.set(-6, 4, -6);
+    this.scene.add(rimLight);
   }
 
   initControls() {
@@ -138,13 +146,22 @@ export class Game {
   animate() {
     requestAnimationFrame(() => this.animate());
 
+    if (!this.clock) this.clock = new THREE.Clock();
+    const dt = Math.min(this.clock.getDelta(), 0.05);
+
     // Emit player actions to the server
     this.socket.emit('playerAction', {
       keysPressed: this.keysPressed
     });
 
-    this.player.animate(this.keysPressed, this.stage, this.camera);
-  
+    this.player.animate(this.keysPressed, this.stage, this.camera, dt);
+
+    // Keep other players' animations running
+    for (const socketId in this.otherPlayers) {
+      const other = this.otherPlayers[socketId];
+      if (other.mixer) other.mixer.update(dt);
+    }
+
     this.renderer.render(this.scene, this.camera);
   }
 }

@@ -29,27 +29,27 @@ what your hands were doing on the controller, could I tell who you were playing?
 
 ## The roster
 
-### Implemented in the showcase (`public/characters.html`)
+### The cast — KayKit Adventurers (`public/adventurers.html`)
 
-| | Puff — The Acrobat | Magnus — The Juggernaut | Wisp — The Phantom Zoner |
-|---|---|---|---|
-| **Fantasy** | bouncy rush-down pest | unstoppable wall of stone | untouchable trickster |
-| **Silhouette** | small round ball | huge blocky shoulders, tiny head | tapered floating cone, no legs |
-| **Movement verb** | 5 mid-air jumps, somersaults | none — he's the anvil | hovers, *teleports* instead of jumping |
-| **Signature move** | spin-slap (multi-hit, weak) | haymaker with super-armor during wind-up | chargeable orb projectile |
-| **Stats lean** | light, fast, weak hits | heavy, slow, huge knockback | lightest, floaty, terrible up close |
-| **Animation personality** | overshoot easing, everything bounces | heavy anticipation, sharp strikes, screen shake | pure sine motion, never touches the ground |
+| | Bastion — The Bulwark | Korga — The Avalanche | Elara — The Tempest | Whisper — The Phantom Blade |
+|---|---|---|---|---|
+| **Model** | Knight | Barbarian | Mage | Rogue (hooded) |
+| **Fantasy** | immovable wall | reckless berserker | untouchable artillery | in-and-out assassin |
+| **Movement verb** | none — slowest run, shortest jumps | armored forward momentum | blink-teleport replaces her dodge | i-frame dash, fastest run |
+| **Signature** | Block stance: no flinch, no knockback; Shield Bash is the only attack that works mid-block | Rage: damage taken powers her next swing; Whirlwind travels while it hits | chargeable bolts — tap for a poke, hold for a screen-crossing blast | Smoke bomb: vanish for a second; backstabs hit double |
+| **Weakness** | can be out-spaced forever | everything is honest and reactable | helpless up close | paper weight, weak single hits |
+| **Loadout (visible props)** | `1H_Sword` + `Badge_Shield` | `2H_Axe` | `2H_Staff` | `Knife` ×2 (+ `Throwable`) |
+| **Key clips** | `1H_Melee_Attack_Slice_Diagonal`, `Block_Attack`, `Blocking` | `2H_Melee_Attack_Chop`, `2H_Melee_Attack_Spinning` | `Spellcast_Shoot`, `Spellcast_Long` | `Dualwield_Melee_Attack_Slice`, `Throw`, `Dodge_*` |
 
-Moveset sketches once combat exists:
+Every GLB ships the same ~76 clips (idle, run, a three-phase jump, four dodges,
+block/block-hit, hit reactions, deaths, full melee/ranged/spellcast families) and
+*every weapon variant already rigged to the hands* — a kit is defined by which props
+it leaves visible. Distinctness comes from clip choice, per-character timing
+(`setEffectiveTimeScale`), and the verbs above; the skeleton is shared.
 
-- **Puff** — jab: rapid slap flurry · side: rolling spin dash · up: corkscrew somersault
-  (also the recovery) · weakness: dies early, no kill power except off-stage gimps
-- **Magnus** — jab: slow backhand · side: the haymaker (armored frames 8–20) · up:
-  double-fist uppercut · down: quake stomp that trips grounded opponents · weakness:
-  everything is reactable; he gets juggled forever
-- **Wisp** — jab: weak swipe · side: orb (hold to charge size/speed) · up: blink
-  teleport (brief sparkle telegraphs where he'll appear — counterplay) · down: phase
-  (0.4 s intangible, long cooldown) · weakness: lowest weight, no answer to shields
+The earlier procedural prototypes (`public/characters.html`) carried the same role
+DNA — Korga inherits Magnus's tempo, Elara inherits Wisp's, and Whisper plays at
+Puff's speed. Plain `Rogue.glb` is kept as an alternate costume for Whisper.
 
 ### Future concepts (each adds a *new verb*, not a stat remix)
 
@@ -115,14 +115,20 @@ clips carefully — and every character that shares a pack shares a skeleton-fee
 **Option C — custom Blender models / commissions / AI mesh generators.** The
 end-game once designs are locked. Don't start here; iterate on designs in A or B first.
 
-**Recommendation:** A now — build the moveset system against it, keep each rig behind a
-tiny interface (`build()`, `setState(s)`, `update(dt, t)` — exactly the showcase shape)
-so swapping a procedural rig for a glTF model later touches nothing but the rig file.
+**Decision: Option B — KayKit Adventurers (CC0).** Assets live in
+`public/assets/kaykit/` (from the official GitHub mirror, license file included).
+`public/adventurers.html` is the living kit sheet, and the in-game `Player` loads
+the Knight via `GLTFLoader` + `AnimationMixer`, with idle/run/jump clips driven by
+the existing input code.
 
-## Running the showcase
+## Running it
 
 ```
-node server.js   →   http://localhost:3000/characters.html
+node server.js
+  → http://localhost:3000              the game (Bastion playable)
+  → http://localhost:3000/adventurers.html   roster & kit showcase
+  → http://localhost:3000/characters.html    earlier procedural prototypes
 ```
 
-Click a character (or `1`/`2`/`3`), then `R` walk · `Space` jump · `F` attack · `X` idle.
+Showcase controls: `1`-`4` select · `R` run · `Space` jump · `F` attack ·
+`G` special · `H` hit reaction · `K` KO (and get back up) · `X` idle.

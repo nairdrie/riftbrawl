@@ -5,17 +5,18 @@ export class Player {
     static RESPAWN_THRESHOLD = -30;
 
 
-    constructor(x, y, z, socket) {
-        this.handTransitionSpeed = 0.1;
+    constructor(x, y, z, socket, characterFile = 'assets/kaykit/Knight.glb') {
         this.moveSpeed = 0.1;
         this.gravity = -0.01;
         this.canJump = false;
         this.jumpCount = 0;
+        this.facing = 1;
         this.initialPosition = new THREE.Vector3(x, y, z);
         this.velocity = new THREE.Vector3();
         this.socket = socket;
 
         this.group = this.generateBodyGroup();
+        this.loadCharacter(characterFile);
 
         this.setPosition(x, y, z);
     }
@@ -23,31 +24,55 @@ export class Player {
     generateBodyGroup() {
         const group = new THREE.Group();
 
-        // Create the body (main sphere)
-        const bodyGeometry = new THREE.SphereGeometry(0.5, 32, 32);
-        const bodyMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff69b4
-        });
-        const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
-        body.position.y = 0.5;
+        // Invisible placeholder keeps the bounding box stable for physics,
+        // both before the model loads and through animation poses.
+        const placeholder = new THREE.Mesh(
+            new THREE.BoxGeometry(0.9, 1.7, 0.6),
+            new THREE.MeshBasicMaterial()
+        );
+        placeholder.visible = false;
+        placeholder.position.y = 0.85;
+        group.add(placeholder);
 
-        // Create the left hand (small sphere)
-        const handGeometry = new THREE.SphereGeometry(0.15, 32, 32);
-        const handMaterial = new THREE.MeshStandardMaterial({
-            color: 0xff69b4
-        });
-        const leftHand = new THREE.Mesh(handGeometry, handMaterial);
-        leftHand.position.set(-0.7, 0.5, 0);
-
-        // Create the right hand (small sphere)
-        const rightHand = new THREE.Mesh(handGeometry, handMaterial);
-        rightHand.position.set(0.7, 0.5, 0);
-
-        group.add(body);
-        group.add(leftHand);
-        group.add(rightHand);
-        
         return group;
+    }
+
+    loadCharacter(characterFile) {
+        const loader = new THREE.GLTFLoader();
+        loader.load(characterFile, (gltf) => {
+            this.model = gltf.scene;
+            // The GLB ships every weapon variant rigged to the hands;
+            // show only this character's loadout.
+            const PROP_RE = /Sword|Shield|Axe|Mug|Spellbook|Wand|Staff|Crossbow|Knife|Throwable/i;
+            const loadout = ['1H_Sword', 'Badge_Shield'];
+            this.model.traverse((o) => {
+                if (o.isMesh) {
+                    o.castShadow = true;
+                    o.frustumCulled = false;
+                }
+                if (PROP_RE.test(o.name)) o.visible = loadout.includes(o.name);
+            });
+            this.group.add(this.model);
+
+            this.mixer = new THREE.AnimationMixer(this.model);
+            this.actions = {};
+            for (const clip of gltf.animations) {
+                this.actions[clip.name] = this.mixer.clipAction(clip);
+            }
+            this.playClip('Idle');
+        });
+    }
+
+    playClip(name, fade = 0.18, timeScale = 1) {
+        if (!this.actions || !this.actions[name] || this.currentClip === name) {
+            return;
+        }
+        const next = this.actions[name];
+        next.reset().setEffectiveTimeScale(timeScale).setEffectiveWeight(1).play();
+        if (this.currentClip) {
+            this.actions[this.currentClip].crossFadeTo(next, fade, false);
+        }
+        this.currentClip = name;
     }
 
 
@@ -96,30 +121,29 @@ export class Player {
         }
     }
 
-    updateHandsPosition() {
-        if (this.velocity.x === 0) {
-            return;
-        }
-    
-        const leftHand = this.group.children[1];
-        const rightHand = this.group.children[2];
-        const handOffsetY = 0.5;
-        const handOffsetX = 0.7;
-        const handOffsetZ = 0.2;
-    
-        const targetLeftHandPosition = new THREE.Vector3();
-        const targetRightHandPosition = new THREE.Vector3();
-    
+    updateAnimation(dt) {
         if (this.velocity.x > 0) {
-            targetLeftHandPosition.set(handOffsetX, handOffsetY, -handOffsetZ);
-            targetRightHandPosition.set(handOffsetX, handOffsetY, handOffsetZ);
+            this.facing = 1;
         } else if (this.velocity.x < 0) {
-            targetLeftHandPosition.set(-handOffsetX, handOffsetY, -handOffsetZ);
-            targetRightHandPosition.set(-handOffsetX, handOffsetY, handOffsetZ);
+            this.facing = -1;
         }
-    
-        leftHand.position.lerp(targetLeftHandPosition, this.handTransitionSpeed);
-        rightHand.position.lerp(targetRightHandPosition, this.handTransitionSpeed);
+
+        // Face the direction of travel, slightly angled toward the camera
+        const targetYaw = this.facing * (Math.PI / 2 - 0.35);
+        this.group.rotation.y += (targetYaw - this.group.rotation.y) * Math.min(dt * 10, 1);
+
+        const airborne = !this.canJump && Math.abs(this.velocity.y) > 0.001;
+        if (airborne) {
+            this.playClip(this.velocity.y > 0 ? 'Jump_Start' : 'Jump_Idle', 0.12);
+        } else if (this.velocity.x !== 0) {
+            this.playClip('Running_A');
+        } else {
+            this.playClip('Idle');
+        }
+
+        if (this.mixer) {
+            this.mixer.update(dt);
+        }
     }
 
     isColliding(box1, box2) {
@@ -175,19 +199,15 @@ export class Player {
     }
 
     updateFromGameState(gameState) {
-        // Update player properties based on the server's data
-        // This should be implemented based on your game state structure
-      
-        // Example: Updating player position and rotation
+        // Position comes from the server; rotation stays local so the
+        // character keeps facing its direction of travel.
         this.group.position.set(gameState.position.x, gameState.position.y, gameState.position.z);
-        this.group.rotation.y = gameState.rotation.y;
     }
 
-    animate(keysPressed, stage, camera) {
+    animate(keysPressed, stage, camera, dt = 0.016) {
         this.updateVelocity(keysPressed);
         this.updatePosition();
-        // this.updateRotation(camera);
-        this.updateHandsPosition();
+        this.updateAnimation(dt);
         this.handleCollision(stage);
         this.handleRespawn();
         this.moveCamera(camera);

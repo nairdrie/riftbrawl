@@ -5,6 +5,7 @@ export class Stage {
             color: 0xffffff
         });
         this.mesh = new THREE.Mesh(groundGeometry, groundMaterial);
+        this.mesh.receiveShadow = true;
         this.setPosition(x, y, z);
 
     }
