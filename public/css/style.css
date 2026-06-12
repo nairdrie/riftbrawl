@@ -283,6 +283,67 @@ input:focus {
 
 /* ── main menu ───────────────────────────────────────────────────────── */
 
+.menu-topbar { justify-content: flex-end; padding-bottom: 0; }
+
+.menu-logo {
+  text-align: center;
+  margin-top: -54px;
+  pointer-events: none;
+  position: relative;
+  z-index: 1;
+}
+.menu-logo-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: clamp(56px, 8.5vw, 104px);
+  line-height: 0.95;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  text-shadow: 0 10px 50px rgba(106, 92, 255, 0.5);
+  animation: logoFloat 5.5s ease-in-out infinite;
+}
+.menu-logo-title span {
+  background: linear-gradient(92deg,
+    var(--cyan), var(--violet) 30%, var(--magenta) 55%, var(--violet) 80%, var(--cyan));
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 28px rgba(138, 92, 255, 0.6));
+  animation: logoShimmer 5s linear infinite;
+}
+.menu-logo-tag {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.42em;
+  color: var(--ink-dim);
+  margin-top: 8px;
+}
+.menu-logo::after {
+  content: '';
+  display: block;
+  width: min(380px, 56%);
+  height: 2px;
+  margin: 12px auto 0;
+  border-radius: 2px;
+  background: var(--grad);
+  box-shadow: 0 0 18px rgba(138, 92, 255, 0.8);
+  animation: beamPulse 3s ease-in-out infinite;
+}
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-5px); }
+}
+@keyframes logoShimmer {
+  from { background-position: 0% 50%; }
+  to { background-position: -250% 50%; }
+}
+@keyframes beamPulse {
+  0%, 100% { opacity: 0.45; transform: scaleX(0.82); }
+  50% { opacity: 1; transform: scaleX(1); }
+}
+
 .menu-body {
   flex: 1;
   display: grid;
@@ -336,6 +397,51 @@ input:focus {
 }
 .mode-desc { font-size: 13px; color: var(--ink-dim); }
 .mode-btn.subtle .mode-name { font-size: 18px; color: var(--ink-dim); }
+
+/* ranked — gold, coming soon */
+.mode-btn.ranked { border-color: rgba(255, 225, 107, 0.28); }
+.mode-btn.ranked::before {
+  background: linear-gradient(180deg, #fff6c8, var(--gold) 45%, #ff9d3a);
+}
+.mode-btn.ranked:hover {
+  border-color: rgba(255, 225, 107, 0.55);
+  box-shadow: 0 12px 40px rgba(255, 200, 87, 0.2);
+}
+.mode-btn.ranked .mode-name {
+  background: linear-gradient(180deg, #fff6c8, var(--gold));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.soon-badge {
+  position: absolute; top: 14px; right: 16px;
+  font-family: var(--display); font-weight: 700; font-size: 10px;
+  letter-spacing: 0.22em;
+  color: #1a1305;
+  background: linear-gradient(92deg, #fff6c8, var(--gold));
+  padding: 4px 10px 3px;
+  border-radius: 7px;
+  animation: soonPulse 2.4s ease-in-out infinite;
+}
+@keyframes soonPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 225, 107, 0.3); }
+  50% { box-shadow: 0 0 22px rgba(255, 225, 107, 0.7); }
+}
+.rank-strip { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; }
+.rank-tier {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--display); font-weight: 700; font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--ink-dim);
+}
+.rank-tier::before {
+  content: '';
+  width: 7px; height: 7px;
+  border-radius: 2px;
+  background: var(--tc);
+  transform: rotate(45deg);
+  box-shadow: 0 0 8px var(--tc);
+}
 
 /* ── friends panel ───────────────────────────────────────────────────── */
 
@@ -744,7 +850,16 @@ input:focus {
 
 /* ── responsive ──────────────────────────────────────────────────────── */
 
+@media (max-height: 800px) {
+  .menu-logo { margin-top: -48px; }
+  .menu-logo-title { font-size: clamp(44px, 6.5vw, 76px); }
+  .menu-logo::after { margin-top: 8px; }
+  .menu-heading { font-size: 28px; }
+  #screen-menu .mode-btn { padding: 16px 22px; }
+}
+
 @media (max-width: 980px) {
+  .menu-logo { margin-top: 0; }
   .menu-body { grid-template-columns: 1fr; overflow-y: auto; }
   .friends-panel { max-height: none; }
   #select-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); overflow-y: auto; }
