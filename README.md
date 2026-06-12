@@ -50,6 +50,12 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
   like you expect.
 - **Charge shots** — hold neutral-B to charge it (bigger, faster, harder
   knockback; auto-fires at max). Getting hit drops your charge.
+- **Charge smashes** — hold the attack button on a directional tilt
+  (f/u/d) to wind up a smash attack; release (or hit max charge) to swing
+  for scaled damage + knockback. Getting hit drops the charge.
+- **Grab & throw** — grab (L, or shield+attack) beats shield. Hold a
+  direction to throw four ways (f/b/u/d), tap attack to pummel, or mash
+  the stick to wriggle free — escapes get harder the higher your percent.
 - **Defense** — hold shield (it shrinks, breaks, and regenerates),
   shield-stun, shield-break stun.
 
@@ -72,6 +78,7 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | Attack | J | A |
 | Special | K | B |
 | Shield | Shift | bumpers / triggers |
+| Grab | L | shield + A |
 | Fast-fall | S / ↓ while falling | stick down |
 | Crouch | hold S / ↓ on the ground | hold stick down |
 | Pause | Esc / P | Start |

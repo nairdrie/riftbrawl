@@ -30,6 +30,7 @@ export const BTN = {
   SPECIAL: 2,
   JUMP: 4,
   SHIELD: 8,
+  GRAB: 16,
 };
 
 // Player action states
@@ -44,6 +45,8 @@ export const ACT = {
   DEAD: 7,          // waiting to respawn
   RESPAWN: 8,       // standing on revival platform
   LEDGE: 9,         // hanging from the stage edge
+  GRAB: 10,         // reaching for / holding a grabbed opponent
+  GRABBED: 11,      // being held by an opponent
 };
 
 // Ledge mechanics
@@ -76,6 +79,35 @@ export const NB_CHARGE = {
   speed: 0.45,    // +45% projectile speed
   size: 0.8,      // +80% radius
   kb: 0.7,        // +70% base knockback / growth
+};
+
+// smash-attack charge: hold ATTACK on a directional tilt (f/u/d) to charge a
+// smash, release (or hit max) to swing with scaled damage + knockback.
+export const SMASH_CHARGE = {
+  max: 60,        // ticks to full charge (~1s)
+  dmg: 1.1,       // +110% damage at full charge
+  kb: 0.95,       // +95% base knockback / growth
+};
+
+// grab / pummel / throw — Smash-style: grab beats shield, mash to escape
+export const GRAB = {
+  reachFrom: 5, reachTo: 10, total: 30,   // whiff timing (punishable on miss)
+  range: 58,        // grab reach in front (px)
+  vert: 64,         // vertical catch tolerance
+  hold: 18,         // px the held victim sits in front of the grabber
+  holdMax: 130,     // ticks before the hold auto-breaks
+  pummelDmg: 2.2, pummelCd: 16,
+  mashPerInput: 5,  // escape progress per fresh victim input
+  mashWiggle: 2,    // escape progress per big stick flick
+  releaseStun: 16,  // victim's stun when they break free / are dropped
+  throwLag: 8,      // grabber recovery after a throw
+};
+// universal throws (scaled like any other hit by victim weight/percent)
+export const THROWS = {
+  fthrow: { dmg: 8,  angle: 42,  bkb: 7,   kbg: 6.0 },
+  bthrow: { dmg: 9,  angle: 42,  bkb: 8,   kbg: 6.5, back: true },
+  uthrow: { dmg: 7,  angle: 88,  bkb: 7,   kbg: 7.0 },
+  dthrow: { dmg: 6,  angle: 65,  bkb: 5,   kbg: 4.5 },
 };
 
 export const BODY_PUSH = {

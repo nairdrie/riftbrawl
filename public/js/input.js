@@ -11,8 +11,9 @@ let gamepadName = '';
 const KEYMAP = {
   attack: ['KeyJ', 'KeyZ'],
   special: ['KeyK', 'KeyX'],
-  jump: ['Space', 'KeyL', 'KeyC'],
+  jump: ['Space', 'KeyC'],
   shield: ['ShiftLeft', 'ShiftRight', 'Semicolon', 'KeyV'],
+  grab: ['KeyL', 'KeyG'],
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   up: ['KeyW', 'ArrowUp'],
@@ -125,6 +126,7 @@ export function sampleInput() {
     if (anyKey(KEYMAP.special)) b |= BTN.SPECIAL;
     if (anyKey(KEYMAP.jump)) b |= BTN.JUMP;
     if (anyKey(KEYMAP.shield)) b |= BTN.SHIELD;
+    if (anyKey(KEYMAP.grab)) b |= BTN.GRAB;
     if (anyKey(KEYMAP.left)) x -= 1;
     if (anyKey(KEYMAP.right)) x += 1;
     if (anyKey(KEYMAP.up)) y -= 1;
@@ -146,7 +148,12 @@ export function sampleInput() {
     if (gp.buttons[2]?.pressed || gp.buttons[3]?.pressed) b |= BTN.JUMP;  // X, Y
     if (gp.buttons[4]?.pressed || gp.buttons[5]?.pressed ||
         gp.buttons[6]?.pressed || gp.buttons[7]?.pressed) b |= BTN.SHIELD;
+    // dedicated grab on the right stick click, if the pad has it
+    if (gp.buttons[10]?.pressed) b |= BTN.GRAB;
   }
+
+  // shield + attack together = grab (classic Smash shortcut; works on kb & pad)
+  if ((b & BTN.SHIELD) && (b & BTN.ATTACK)) { b |= BTN.GRAB; b &= ~BTN.ATTACK; }
 
   return { b, x: quant(Math.max(-1, Math.min(1, x))), y: quant(Math.max(-1, Math.min(1, y))) };
 }
