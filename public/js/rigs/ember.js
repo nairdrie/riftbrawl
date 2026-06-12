@@ -50,6 +50,7 @@ export const emberRig = {
       else if (M.ph === 'hit') lean += 0.2;
       else lean += 0.2 * (1 - M.rk);
       if (M.id === 'ub') lean = -0.22;
+      if (M.id === 'sb') { lean = -0.3; lunge = 0; }   // retreating flare step
     }
     if (A.reel) lean = -0.5;
     const hipSway = (!M && A.grounded && A.runAmt < 0.05) ? Math.sin(t * 1.7) * 1.6 : 0;

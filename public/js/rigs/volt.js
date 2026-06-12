@@ -35,6 +35,22 @@ export const voltRig = {
     const M = A.move;
     const SKIN = '#ffe3bd';
 
+    // Storm Blink: gone between vanish and reappear — draw only a streak
+    if (M && M.id === 'sb' && M.data.warp != null &&
+        M.f >= M.data.warp - 1 && M.f <= M.data.warp + 2) {
+      glowOn(ctx, C.accent, 18);
+      ink(ctx, C.accent, 3);
+      ctx.beginPath();
+      ctx.moveTo(-30, -44); ctx.lineTo(-6, -50); ctx.lineTo(2, -38); ctx.lineTo(26, -44);
+      ctx.stroke();
+      ink(ctx, '#ffffff', 1.4);
+      ctx.beginPath();
+      ctx.moveTo(-26, -44); ctx.lineTo(-6, -49); ctx.lineTo(2, -39); ctx.lineTo(22, -44);
+      ctx.stroke();
+      glowOff(ctx);
+      return;
+    }
+
     // ── metrics + idle bounce ────────────────────────────────────────────
     const idleAmt = A.grounded && !M && !A.guard && !A.dizzy && A.runAmt < 0.05 && !A.crouch ? 1 : 0;
     const bounce = idleAmt * Math.abs(Math.sin(t * 4.8)) * -2.6;
@@ -257,6 +273,21 @@ export const voltRig = {
     if (idleAmt && Math.sin(t * 9.1) > 0.93) {
       const a = t * 17 % TAU;
       bolt(ctx, Math.cos(a) * 9, headY - 4, Math.cos(a) * 19, headY - 10 + Math.sin(a) * 8, t * 40, C.accent, 1.6);
+    }
+    // static stacks: the storm builds visibly around him
+    const stacks = p.stacks || 0;
+    if (stacks > 0) {
+      for (let i = 0; i < stacks; i++) {
+        const a = t * (3.4 + stacks * 0.5) + (i / 5) * TAU;
+        const rr = 26 + Math.sin(t * 7 + i * 2) * 3;
+        glowOn(ctx, C.accent, 8);
+        disc(ctx, Math.cos(a) * rr, -42 + Math.sin(a) * rr * 0.7, 1.7 + stacks * 0.18, i % 2 ? '#ffffff' : C.accent, null);
+        glowOff(ctx);
+      }
+      if (stacks >= 5 && Math.sin(t * 13) > 0.4) {
+        const a = t * 23 % TAU;
+        bolt(ctx, Math.cos(a) * 12, -46, Math.cos(a) * 30, -46 + Math.sin(a) * 18, t * 50, '#ffffff', 1.8, C.accent);
+      }
     }
     if (p.moveId === 'nb' && (p.charge || 0) > 0) {
       chargeOrb(ctx, hF[0] + Math.cos(wA) * 22, hF[1] + Math.sin(wA) * 22, p.charge, 66, C, t);
