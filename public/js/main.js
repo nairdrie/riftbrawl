@@ -533,6 +533,20 @@ net.on('paused', (msg) => match?.onPaused(msg));
 net.on('resuming', (msg) => match?.onResuming(msg));
 net.on('resumed', () => match?.onResumed());
 
+// pause menu (shown over the match canvas; see game.js syncPauseMenu)
+$('#btn-pause-resume').addEventListener('click', () => {
+  if (!match?.paused || match.resumeT) return;
+  sfx.click();
+  net.send({ t: 'unpause' });
+});
+$('#btn-pause-quit').addEventListener('click', () => {
+  sfx.click();
+  confirmAction('Quit the match? This counts as a loss.', () => {
+    net.send({ t: 'leaveRoom' });
+    leaveToMenu();
+  });
+});
+
 net.on('end', (msg) => {
   lastResults = msg;
   setTimeout(() => showResults(msg), 1800);
@@ -727,6 +741,7 @@ function navScope() {
   const modal = document.querySelector('.modal.open .modal-box');
   if (modal) return modal;
   if ($('#queue-overlay').classList.contains('open')) return $('#queue-overlay');
+  if ($('#pause-menu').classList.contains('open')) return $('#pause-menu');
   return document.querySelector('.screen.active');
 }
 
@@ -774,7 +789,11 @@ function padBack(scope) {
 }
 
 function padNavLoop() {
-  const inGame = $('#screen-game').classList.contains('active');
+  // while a match is live the pad drives the fighter — except when the pause
+  // menu (or a modal over it) is up, where it should navigate the buttons.
+  const overlayUp = $('#pause-menu').classList.contains('open')
+    || document.querySelector('.modal.open');
+  const inGame = $('#screen-game').classList.contains('active') && !overlayUp;
   if (inGame) {
     setPadFocus(null);
   } else {

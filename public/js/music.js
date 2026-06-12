@@ -106,3 +106,11 @@ function armGesture() {
 
 // Mute is global (owned by sfx.js); re-apply when it toggles.
 document.addEventListener('audio:mute', applyVolume);
+
+// Controller-only players never trigger a pointer/key gesture, so retry the
+// current track when input.js reports the first gamepad activity.
+document.addEventListener('pad:gesture', () => {
+  if (!current) return;
+  const a = el(current);
+  if (a.paused) a.play().then(() => { a.volume = targetVol(); }).catch(() => {});
+});
