@@ -254,11 +254,18 @@ export class MatchClient {
       // damage taken
       if (p.percent > q.percent + 0.01 && p.act !== ACT.DEAD) {
         const dmg = p.percent - q.percent;
-        this.renderer.hitSpark(p.x, p.y - 40, dmg, char.colors.accent);
-        sfx.hit(dmg);
-        this.renderer.shake(Math.min(22, 3 + dmg * 1.4));
-        if (i === this.myIdx) rumble(Math.min(1, 0.3 + dmg * 0.06), 0.5, 90 + dmg * 14);
-        else rumble(0.12, 0.3, 60);   // you landed the hit
+        if (p.act === ACT.GRABBED) {
+          // being pummelled while held — lighter feedback than a launching hit
+          this.renderer.hitSpark(p.x, p.y - 44, dmg * 0.6, char.colors.accent);
+          sfx.pummel();
+          if (i === this.myIdx) rumble(0.4, 0.5, 90);
+        } else {
+          this.renderer.hitSpark(p.x, p.y - 40, dmg, char.colors.accent);
+          sfx.hit(dmg);
+          this.renderer.shake(Math.min(22, 3 + dmg * 1.4));
+          if (i === this.myIdx) rumble(Math.min(1, 0.3 + dmg * 0.06), 0.5, 90 + dmg * 14);
+          else rumble(0.12, 0.3, 60);   // you landed the hit
+        }
       }
       // shield chip
       if (p.shield < q.shield - 1.5 && p.act !== ACT.SHIELD) { /* drained out */ }
@@ -290,11 +297,13 @@ export class MatchClient {
         sfx.djump();
         this.renderer.spawn({ type: 'ring', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.3, size: 18, color: char.colors.trail });
       }
-      // neutral-B charge feedback
+      // neutral-B / smash-attack charge feedback (both use p.charge)
       const ch = p.charge || 0, qch = q.charge || 0;
+      const smashCharge = p.moveId === 'ftilt' || p.moveId === 'utilt' || p.moveId === 'dtilt';
       if (ch > qch) {
-        if (ch % 14 === 0) sfx.chargeTick(Math.min(1, ch / 66));
-        if (ch === 66) { sfx.chargeFull(); if (i === this.myIdx) rumble(0.2, 0.4, 90); }
+        const cmax = smashCharge ? 60 : 66;
+        if (ch % 14 === 0) sfx.chargeTick(Math.min(1, ch / cmax));
+        if (ch === cmax) { sfx.chargeFull(); if (i === this.myIdx) rumble(0.25, 0.4, 100); }
       }
       // fast fall kick
       if (p.fastFalling && !q.fastFalling) {
@@ -329,11 +338,53 @@ export class MatchClient {
         }
         sfx.whiff();
       }
+      // grab / pummel / throw
+      if (p.act === ACT.GRAB && q.act !== ACT.GRAB) sfx.grab();
+      if (p.act === ACT.GRABBED && q.act !== ACT.GRABBED) {
+        sfx.grabCatch();
+        this.renderer.spawn({ type: 'flash', x: p.x, y: p.y - 40, vx: 0, vy: 0, life: 0.16, size: 30, color: char.colors.glow });
+        this.renderer.shake(6);
+        if (i === this.myIdx) rumble(0.5, 0.6, 140);
+      }
+      if (q.act === ACT.GRABBED && p.act === ACT.HITSTUN) {
+        sfx.throw();
+        if (i === this.myIdx) rumble(0.6, 0.5, 150);
+      }
     }
 
-    // projectile spawn sound (count grew)
-    if (this.pred.projectiles.length > (this._lastProjCount || 0)) sfx.shoot();
-    this._lastProjCount = this.pred.projectiles.length;
+    // AEGIS quake eruptions — "bang bang bang" rolling across the stage
+    if (!this._shockIds) this._shockIds = new Set();
+    const liveShocks = new Set();
+    for (const pr of view.projectiles) {
+      if ((pr.kind || 'shot') !== 'shock') continue;
+      liveShocks.add(pr.id);
+      if (this._shockIds.has(pr.id)) continue;
+      const power = Math.min(1, (pr.slot || 0) / 10);
+      sfx.quake(0.4 + power * 0.6);
+      this.renderer.shake(8 + power * 15);
+      this.renderer.dust(pr.x - 18, 0, -1);
+      this.renderer.dust(pr.x + 18, 0, 1);
+      if (this.myIdx >= 0) rumble(0.25 + power * 0.4, 0.5, 110);
+    }
+    this._shockIds = liveShocks;
+
+    // reflected projectile ping (owner flipped between frames)
+    if (!this._projOwners) this._projOwners = new Map();
+    const owners = new Map();
+    for (const pr of view.projectiles) {
+      owners.set(pr.id, pr.owner);
+      const prev = this._projOwners.get(pr.id);
+      if (prev !== undefined && prev !== pr.owner) {
+        sfx.reflect();
+        this.renderer.spawn({ type: 'ring', x: pr.x, y: pr.y, vx: 0, vy: 0, life: 0.3, size: 16, color: '#bff7ff' });
+      }
+    }
+    this._projOwners = owners;
+
+    // projectile spawn sound (count grew) — quake shocks have their own sound
+    const projN = this.pred.projectiles.reduce((n, pr) => n + ((pr.kind || 'shot') !== 'shock' ? 1 : 0), 0);
+    if (projN > (this._lastProjCount || 0)) sfx.shoot();
+    this._lastProjCount = projN;
 
     // game end
     if (view.phase === PHASE.OVER && prev.phase !== PHASE.OVER) {

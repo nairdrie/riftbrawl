@@ -5,9 +5,11 @@
 // Convention: feet at (0,0), y negative = up, +x = facing direction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { ACT } from '/shared/constants.js';
+import { ACT, SMASH_CHARGE } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { deriveAnim, drawStar as starFn, TAU } from './rigs/common.js';
+
+const SMASH_MOVES = new Set(['ftilt', 'utilt', 'dtilt']);
 import { aegisRig } from './rigs/aegis.js';
 import { voltRig } from './rigs/volt.js';
 import { emberRig } from './rigs/ember.js';
@@ -58,7 +60,56 @@ export function drawFighter(ctx, p, t, opts = {}) {
   if (A.squash !== 1) ctx.scale(1 + (1 - A.squash) * 0.65, A.squash);
 
   rig.draw(ctx, p, char, A, t);
+
+  // grabbing arm + hand (local space: +x is forward)
+  if (p.act === ACT.GRAB) {
+    const open = (p.grabbing ?? -1) < 0;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = c.secondary; ctx.lineWidth = 7.5;
+    ctx.beginPath(); ctx.moveTo(7, -46); ctx.lineTo(30, -44); ctx.stroke();
+    ctx.strokeStyle = c.primary; ctx.lineWidth = 4.5;
+    ctx.beginPath(); ctx.moveTo(7, -46); ctx.lineTo(30, -44); ctx.stroke();
+    ctx.shadowColor = c.glow; ctx.shadowBlur = open ? 0 : 12;
+    ctx.fillStyle = open ? c.primary : c.accent;
+    if (open) {                              // open hand — spread fingers
+      for (let i = 0; i < 3; i++) {
+        const a = -0.5 + i * 0.5;
+        ctx.beginPath(); ctx.moveTo(30, -44);
+        ctx.lineTo(38 + Math.cos(a) * 2, -44 + Math.sin(a) * 8);
+        ctx.lineWidth = 3; ctx.strokeStyle = c.primary; ctx.stroke();
+      }
+    }
+    ctx.beginPath(); ctx.arc(31, -44, open ? 5.5 : 6, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
   ctx.restore();
+
+  // smash-attack charge aura (world-aligned)
+  if (p.act === ACT.ATTACK && (p.charge || 0) > 0 && SMASH_MOVES.has(p.moveId)) {
+    const k = Math.min(1, p.charge / SMASH_CHARGE.max);
+    const r = (38 + k * 26) * s;
+    ctx.save();
+    ctx.globalAlpha = 0.45 + 0.4 * Math.abs(Math.sin(t * (9 + k * 18)));
+    ctx.strokeStyle = c.accent;
+    ctx.lineWidth = 2 + k * 3;
+    ctx.shadowColor = c.glow; ctx.shadowBlur = 12 + k * 24;
+    ctx.beginPath(); ctx.arc(0, -40 * s, r, 0, TAU); ctx.stroke();
+    if (k >= 1) {
+      ctx.globalAlpha = 0.8;
+      for (let i = 0; i < 6; i++) {
+        const a = t * 7 + i * (TAU / 6);
+        const rr = r * (0.9 + Math.sin(t * 20 + i) * 0.12);
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * rr, -40 * s + Math.sin(a) * rr, 2.4, 0, TAU);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
 
   // shield bubble (world-aligned, drawn over everything)
   if (p.act === ACT.SHIELD) {

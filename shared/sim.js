@@ -9,6 +9,7 @@ import {
   RESPAWN_FREEZE, RESPAWN_INVULN, RESPAWN_PLATFORM_TICKS,
   SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELDBREAK_TICKS,
   LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED, NB_CHARGE, PASSIVE,
+  SMASH_CHARGE, GRAB, THROWS,
 } from './constants.js';
 import { CHARACTERS } from './characters.js';
 
@@ -38,6 +39,8 @@ export function createPlayer(uid, charId, idx) {
     burnTicks: 0, burnTimer: 0,     // ember: damage over time on the victim
     floatT: PASSIVE.FLOAT_TICKS,    // nova: hover budget
     zx: 0, zy: 0,                   // volt: locked zip direction
+    grabbing: -1, grabbedBy: -1,    // grab relationship (idx of the other party)
+    grabTimer: 0, grabMash: 0, pummelCd: 0,
     lastIn: { b: 0, x: 0, y: 0 },
   };
 }
@@ -100,6 +103,34 @@ export function isSpecialMove(moveId) {
   return moveId === 'nb' || moveId === 'sb' || moveId === 'ub' || moveId === 'db';
 }
 
+// directional grounded tilts double as chargeable smash attacks
+export function isSmashMove(moveId) {
+  return moveId === 'ftilt' || moveId === 'utilt' || moveId === 'dtilt';
+}
+
+// clear any grab relationship p is part of, freeing both parties
+function releaseGrab(state, p, stunVictim = false) {
+  if (p.grabbing >= 0) {
+    const v = state.players[p.grabbing];
+    if (v && v.grabbedBy === p.idx) {
+      v.grabbedBy = -1;
+      if (v.act === ACT.GRABBED) {
+        v.act = ACT.FREE; v.actFrame = 0; v.moveId = '';
+        v.stun = stunVictim ? GRAB.releaseStun : 0;
+      }
+    }
+    p.grabbing = -1;
+  }
+  if (p.grabbedBy >= 0) {
+    const h = state.players[p.grabbedBy];
+    if (h && h.grabbing === p.idx) {
+      h.grabbing = -1;
+      if (h.act === ACT.GRAB) { h.act = ACT.FREE; h.actFrame = 0; h.moveId = ''; }
+    }
+    p.grabbedBy = -1;
+  }
+}
+
 function moveTotal(char, moveId) {
   return isSpecialMove(moveId) ? char.specials[moveId].total : char.moves[moveId].total;
 }
@@ -157,11 +188,15 @@ export function getActiveHitboxes(p, char) {
       });
     }
   } else {
+    // charged smash attacks scale damage + knockback with held charge
+    const t = isSmashMove(p.moveId) ? Math.min(1, p.charge / SMASH_CHARGE.max) : 0;
+    const dm = 1 + t * SMASH_CHARGE.dmg, km = 1 + t * SMASH_CHARGE.kb;
     for (const hbx of char.moves[p.moveId].hitboxes) {
       if (f >= hbx.from && f <= hbx.to) {
         out.push({
           x: p.x + hbx.dx * p.facing, y: p.y - 40 * char.scale + hbx.dy,
-          r: hbx.r, dmg: hbx.dmg, angle: hbx.angle, bkb: hbx.bkb, kbg: hbx.kbg,
+          r: hbx.r * (1 + t * 0.12), dmg: hbx.dmg * dm,
+          angle: hbx.angle, bkb: hbx.bkb * km, kbg: hbx.kbg * km,
         });
       }
     }
@@ -215,6 +250,7 @@ function applyHit(target, tChar, hit, dirX, events, state, attacker, aChar) {
     target.stun = Math.floor(kb * 2.0 + dmg * 0.4);
   }
   target.hitlag = Math.min(14, Math.floor(dmg * 0.45) + 2);
+  if (target.grabbing >= 0) releaseGrab(state, target);   // knocked out of a grab
   target.act = ACT.HITSTUN;
   target.actFrame = 0;
   target.moveId = '';
@@ -361,12 +397,16 @@ function updatePlayer(p, inp, char, state, events) {
             life: sp.life, cd: 0, slot: 0, aux: 0,
           };
           if (sp.type === 'quake') {
-            // ground shockwave: crawls along the floor, dies at the edge
+            // ground quake: a carrier wave that rolls outward erupting in
+            // growing "bang" shockwaves — bigger & deadlier the further it
+            // travels, and the whole thing scales with how long it charged.
             pr.kind = 'quake';
             pr.y = STAGE.floorY - 12;
             pr.vy = 0;
             pr.grav = p.grounded ? 0 : 0.6;          // airborne cast drops to the floor
             if (!p.grounded) pr.y = p.y - 20;
+            pr.aux = pr.x;                            // remember the origin
+            pr.slot = 0;                             // erupt on the first grounded tick
           } else if (sp.type === 'boom') {
             // boomerang: decelerates, then returns to its owner
             pr.kind = 'boom';
@@ -489,19 +529,115 @@ function updatePlayer(p, inp, char, state, events) {
             p.vx = Math.max(-sp.drift, Math.min(sp.drift, p.vx));
           }
         }
-      } else if (!p.grounded) {
-        // aerial drift while attacking
-        p.vx += inp.x * char.airAccel * AERIAL_DRIFT_IN_ATTACK;
-        const cap = char.airSpeed;
-        if (Math.abs(p.vx) > cap) p.vx = Math.sign(p.vx) * Math.max(cap, Math.abs(p.vx) * 0.98);
-        if (inp.y > 0.55 && p.vy > 0 && !p.fastFalling) {
-          p.fastFalling = true;
-          p.vy = Math.max(p.vy, char.fastFall * 0.92);
-          events.push({ type: 'ffall', x: p.x, y: p.y, who: p.idx });
+      } else {
+        const firstFrom = char.moves[p.moveId].hitboxes[0]?.from ?? 99;
+        if (p.grounded && isSmashMove(p.moveId) && f === firstFrom &&
+            (inp.b & BTN.ATTACK) && p.charge < SMASH_CHARGE.max) {
+          // hold ATTACK at the wind-up to charge the smash (auto-swings at max)
+          p.actFrame = firstFrom - 1;
+          p.charge++;
+        } else if (!p.grounded) {
+          // aerial drift while attacking
+          p.vx += inp.x * char.airAccel * AERIAL_DRIFT_IN_ATTACK;
+          const cap = char.airSpeed;
+          if (Math.abs(p.vx) > cap) p.vx = Math.sign(p.vx) * Math.max(cap, Math.abs(p.vx) * 0.98);
+          if (inp.y > 0.55 && p.vy > 0 && !p.fastFalling) {
+            p.fastFalling = true;
+            p.vy = Math.max(p.vy, char.fastFall * 0.92);
+            events.push({ type: 'ffall', x: p.x, y: p.y, who: p.idx });
+          }
         }
       }
       if (f >= moveTotal(char, p.moveId)) {
-        p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';
+        p.act = ACT.FREE; p.actFrame = 0; p.moveId = ''; p.charge = 0;
+      }
+      break;
+    }
+    case ACT.GRAB: {
+      p.actFrame++;
+      p.vx *= 0.7;     // grabbing roots you in place
+      if (p.grabbing < 0) {
+        // ── reaching: look for a catch during the active window ──
+        const f = p.actFrame;
+        if (f >= GRAB.reachFrom && f <= GRAB.reachTo) {
+          for (const tgt of state.players) {
+            if (tgt.idx === p.idx) continue;
+            if (tgt.invuln > 0 || !tgt.grounded) continue;
+            if (tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN ||
+                tgt.act === ACT.GRABBED || tgt.act === ACT.HITSTUN) continue;
+            const dx = (tgt.x - p.x) * p.facing;          // + = in front
+            if (dx > -12 && dx < GRAB.range && Math.abs(tgt.y - p.y) < GRAB.vert) {
+              p.grabbing = tgt.idx;
+              p.grabTimer = GRAB.holdMax;
+              p.pummelCd = 0; p.actFrame = 0;
+              tgt.act = ACT.GRABBED; tgt.actFrame = 0; tgt.moveId = '';
+              tgt.grabbedBy = p.idx; tgt.grabMash = 0;
+              tgt.vx = 0; tgt.vy = 0; tgt.stun = 0; tgt.charge = 0;
+              tgt.facing = -p.facing;
+              events.push({ type: 'grab', x: tgt.x, y: tgt.y - 40, who: p.idx, victim: tgt.idx });
+              break;
+            }
+          }
+        }
+        if (p.grabbing < 0 && p.actFrame >= GRAB.total) {
+          p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';      // whiffed
+        }
+      } else {
+        // ── holding: pin the victim, allow pummel / throw, auto-break on timer ──
+        const v = state.players[p.grabbing];
+        if (!v || v.grabbedBy !== p.idx || v.act !== ACT.GRABBED) {
+          releaseGrab(state, p);
+          p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';
+        } else {
+          v.x = p.x + p.facing * GRAB.hold;
+          v.y = p.y; v.vx = 0; v.vy = 0; v.grounded = p.grounded;
+          v.facing = -p.facing;
+          if (p.pummelCd > 0) p.pummelCd--;
+          if (p.grabTimer > 0) p.grabTimer--;
+          let mv = '';
+          if (p.actFrame >= 3) {
+            if (inp.y < -0.5) mv = 'uthrow';
+            else if (inp.y > 0.5) mv = 'dthrow';
+            else if (inp.x * p.facing > 0.5) mv = 'fthrow';
+            else if (inp.x * p.facing < -0.5) mv = 'bthrow';
+          }
+          if (mv) {
+            const th = THROWS[mv];
+            const dirX = th.back ? -p.facing : p.facing;
+            v.grabbedBy = -1; p.grabbing = -1;
+            v.act = ACT.FREE;                                   // applyHit re-launches
+            const vChar = CHARACTERS[v.charId];
+            applyHit(v, vChar, th, dirX, events, state, p, char);
+            events.push({ type: 'throw', x: p.x, y: p.y - 40, who: p.idx, victim: v.idx, dir: mv });
+            p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';
+            p.stun = GRAB.throwLag;
+          } else if ((pressed & BTN.ATTACK) && p.pummelCd === 0) {
+            v.percent = Math.min(999, v.percent + GRAB.pummelDmg);
+            p.pummelCd = GRAB.pummelCd;
+            events.push({ type: 'pummel', x: v.x, y: v.y - 40, who: p.idx, victim: v.idx });
+          } else if (p.grabTimer <= 0) {
+            releaseGrab(state, p, true);                        // hold expired
+            p.act = ACT.FREE; p.actFrame = 0; p.moveId = '';
+          }
+        }
+      }
+      break;
+    }
+    case ACT.GRABBED: {
+      const h = p.grabbedBy >= 0 ? state.players[p.grabbedBy] : null;
+      if (!h || h.grabbing !== p.idx) {
+        releaseGrab(state, p);
+        p.act = ACT.FREE; p.actFrame = 0;
+      } else {
+        // mash buttons / wiggle the stick to break free sooner (harder at high %)
+        if (pressed) p.grabMash += GRAB.mashPerInput;
+        if (Math.abs(inp.x - p.prevX) > 0.6) p.grabMash += GRAB.mashWiggle;
+        const escape = 70 + p.percent * 0.55;
+        h.grabTimer -= 1 + Math.floor(p.grabMash / 12);
+        if (p.grabMash >= escape) {
+          releaseGrab(state, p, true);
+          p.act = ACT.FREE; p.actFrame = 0;
+        }
       }
       break;
     }
@@ -511,6 +647,10 @@ function updatePlayer(p, inp, char, state, events) {
       if (p.shield <= 0) {
         p.shield = 0; p.act = ACT.SHIELDBREAK; p.actFrame = 0; p.stun = SHIELDBREAK_TICKS;
         events.push({ type: 'shieldbreak', x: p.x, y: p.y - 40, victim: p.idx });
+      } else if (pressed & BTN.GRAB) {
+        // shield-grab
+        p.act = ACT.GRAB; p.actFrame = 0; p.moveId = 'grab'; p.grabbing = -1;
+        events.push({ type: 'grabtry', x: p.x, y: p.y - 40, who: p.idx });
       } else if (pressed & BTN.JUMP) {
         p.act = ACT.JUMPSQUAT; p.actFrame = 0;
       } else if (!(inp.b & BTN.SHIELD)) {
@@ -545,7 +685,11 @@ function updatePlayer(p, inp, char, state, events) {
     }
     case ACT.FREE: {
       if (p.grounded) {
-        if ((pressed & BTN.SHIELD) || (inp.b & BTN.SHIELD)) {
+        if (pressed & BTN.GRAB) {
+          if (Math.abs(inp.x) > 0.4) p.facing = inp.x > 0 ? 1 : -1;
+          p.act = ACT.GRAB; p.actFrame = 0; p.moveId = 'grab'; p.grabbing = -1;
+          events.push({ type: 'grabtry', x: p.x, y: p.y - 40, who: p.idx });
+        } else if ((pressed & BTN.SHIELD) || (inp.b & BTN.SHIELD)) {
           p.act = ACT.SHIELD; p.actFrame = 0;
         } else if (pressed & BTN.ATTACK) {
           if (Math.abs(inp.x) > 0.4) p.facing = inp.x > 0 ? 1 : -1;
@@ -687,6 +831,7 @@ function bodyPush(players) {
       const a = players[i], b = players[j];
       if (!a.grounded || !b.grounded) continue;
       if (a.act === ACT.DEAD || b.act === ACT.DEAD || a.act === ACT.RESPAWN || b.act === ACT.RESPAWN) continue;
+      if (a.act === ACT.GRABBED || b.act === ACT.GRABBED || a.act === ACT.GRAB || b.act === ACT.GRAB) continue;
       const dx = b.x - a.x;
       if (Math.abs(dx) >= BODY_PUSH.range) continue;
       const overlap = BODY_PUSH.range - Math.abs(dx);
@@ -699,7 +844,8 @@ function bodyPush(players) {
 }
 
 function physics(p, char, events) {
-  if (p.act === ACT.DEAD || p.act === ACT.RESPAWN || p.act === ACT.LEDGE) return;
+  if (p.act === ACT.DEAD || p.act === ACT.RESPAWN || p.act === ACT.LEDGE ||
+      p.act === ACT.GRABBED) return;
   if (p.hitlag > 0) return;
 
   if (!p.grounded) {
@@ -760,6 +906,7 @@ function checkBlast(p, state, events) {
   p.stocks--;
   const side = p.x < -STAGE.blastX ? 'left' : p.x > STAGE.blastX ? 'right' : (p.y < 0 ? 'top' : 'bottom');
   events.push({ type: 'ko', x: Math.max(-STAGE.blastX, Math.min(STAGE.blastX, p.x)), y: Math.max(STAGE.blastTop, Math.min(STAGE.blastBottom, p.y)), victim: p.idx, side, stocksLeft: p.stocks });
+  releaseGrab(state, p);
   p.act = ACT.DEAD;
   p.actFrame = 0;
   p.respawnTimer = RESPAWN_FREEZE;
@@ -811,7 +958,8 @@ export function step(state, inputs) {
     for (const tgt of state.players) {
       if (tgt.idx === atk.idx) continue;
       if (atk.hitMask & (1 << tgt.idx)) continue;
-      if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
+      if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN ||
+          tgt.act === ACT.GRABBED) continue;
       const tChar = CHARACTERS[tgt.charId];
       const crouched = isCrouching(tgt);
       const cx = tgt.x, cy = tgt.y - (crouched ? 28 : 40) * tChar.scale;
@@ -887,6 +1035,25 @@ export function step(state, inputs) {
         pr.y = STAGE.floorY - 12;                          // hug the floor
         pr.vy = 0; pr.grav = 0;
       }
+      if (kind === 'quake' && pr.grav === 0 && pr.y >= STAGE.floorY - 16 &&
+          pr.x > -STAGE.halfWidth && pr.x < STAGE.halfWidth) {
+        // erupt periodically — each bang grows with distance from the origin
+        if (pr.slot <= 0) {
+          const d01 = Math.min(1, Math.abs(pr.x - pr.aux) / STAGE.halfWidth);
+          const grow = 1 + d01 * 1.6;        // bigger & deadlier further away
+          state.projectiles.push({
+            id: state.nextProjId++, owner: pr.owner, charId: pr.charId, kind: 'shock',
+            x: pr.x, y: STAGE.floorY - 6, vx: 0, vy: 0, grav: 0,
+            r: pr.r * (0.55 + grow * 0.5), dmg: pr.dmg * grow, angle: 86,
+            bkb: pr.bkb * grow, kbg: pr.kbg * grow,
+            life: 14, cd: 0, slot: Math.round(d01 * 10), aux: 0,
+          });
+          events.push({ type: 'quakestep', x: pr.x, y: STAGE.floorY, charId: pr.charId, power: d01 });
+          pr.slot = 6;                       // ticks between bangs
+        } else {
+          pr.slot--;
+        }
+      }
     }
     if (kind !== 'orbit') pr.life--;
     let dead = pr.life <= 0;
@@ -908,11 +1075,12 @@ export function step(state, inputs) {
     if (!dead && kind !== 'patch' && kind !== 'trap' && kind !== 'orbit' &&
         (pr.x < -STAGE.blastX || pr.x > STAGE.blastX || pr.y > STAGE.blastBottom)) dead = true;
 
-    // ── player interaction ──
-    if (!dead) {
+    // ── player interaction (the quake carrier itself never hits — its shocks do) ──
+    if (!dead && kind !== 'quake') {
       for (const tgt of state.players) {
         if (tgt.idx === pr.owner) continue;
-        if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
+        if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN ||
+            tgt.act === ACT.GRABBED) continue;
         const tChar = CHARACTERS[tgt.charId];
         const crouched = isCrouching(tgt);
         const cx = tgt.x, cy = tgt.y - (crouched ? 28 : 40) * tChar.scale;
@@ -922,7 +1090,7 @@ export function step(state, inputs) {
         const dirX = pr.vx === 0 ? Math.sign(cx - pr.x) || 1 : Math.sign(pr.vx);
 
         // TIDE: Whirlpool Guard sends projectiles back at 1.2× power
-        if ((kind === 'shot' || kind === 'quake' || kind === 'boom') && reflectActive(tgt, tChar)) {
+        if ((kind === 'shot' || kind === 'boom') && reflectActive(tgt, tChar)) {
           pr.owner = tgt.idx;
           pr.charId = tgt.charId;
           pr.kind = 'shot';
@@ -996,6 +1164,7 @@ const P_FIELDS = [
   'respawnTimer', 'platTimer', 'prevB', 'prevX', 'dashTimer',
   'ledgeTimer', 'regrabTimer', 'charge',
   'stacks', 'burnTicks', 'burnTimer', 'floatT', 'zx', 'zy',
+  'grabbing', 'grabbedBy', 'grabTimer', 'grabMash', 'pummelCd',
 ];
 
 export function serializeState(state) {

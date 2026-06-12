@@ -322,6 +322,17 @@ export function deriveAnim(p, char, t) {
       A.airborne = true;
       A.lean = -0.1;
       break;
+    case ACT.GRAB:
+      A.lean = 0.16;
+      A.crouch = 0.06;
+      A.grabbing = true;
+      break;
+    case ACT.GRABBED:
+      A.reel = 1;
+      A.lean = -0.14;
+      A.crouch = 0.1;
+      A.guardStun = true;          // pained, struggling face
+      break;
     case ACT.ATTACK:
       A.move = deriveMove(p, char);
       break;

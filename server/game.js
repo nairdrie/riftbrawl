@@ -39,6 +39,16 @@ class Bot {
     const foe = state.players.find(p => p.idx !== myIdx && p.stocks > 0);
     if (!me || me.act === ACT.DEAD) return { b: 0, x: 0, y: 0 };
     if (me.act === ACT.LEDGE) return { b: 0, x: me.x > 0 ? -1 : 1, y: 0 };
+    if (me.act === ACT.GRABBED) {
+      // mash out of a grab
+      return { b: Math.random() < 0.5 ? BTN.JUMP : BTN.ATTACK, x: Math.random() < 0.5 ? 1 : -1, y: 0 };
+    }
+    if (me.act === ACT.GRAB && me.grabbing >= 0) {
+      // holding someone — pummel a bit, then throw (mix up the direction)
+      if (Math.random() < 0.35) return { b: BTN.ATTACK, x: 0, y: 0 };
+      const r = Math.random();
+      return { b: 0, x: r < 0.5 ? me.facing : -me.facing, y: r < 0.75 ? 0 : (r < 0.88 ? -1 : 1) };
+    }
     let b = 0, x = 0, y = 0;
     this.cool = Math.max(0, this.cool - 1);
     this.shieldHold = Math.max(0, this.shieldHold - 1);
@@ -70,7 +80,9 @@ class Bot {
     } else if (this.cool === 0) {
       // in range — pick an attack
       const roll = Math.random();
-      if (foe.act === ACT.ATTACK && Math.random() < 0.25) {
+      if (foe.act === ACT.SHIELD && Math.random() < 0.55) {
+        b |= BTN.GRAB; this.cool = 34;                  // grabs beat shields
+      } else if (foe.act === ACT.ATTACK && Math.random() < 0.25) {
         this.shieldHold = 22; b |= BTN.SHIELD;
       } else if (dy < -60) {
         b |= BTN.ATTACK; y = -1; this.cool = 26;       // up-tilt / up-air

@@ -415,5 +415,76 @@ function duel(charA, charB) {
   check('tide ends up past the opponent', td.x > a.x - 20, `tide.x=${td.x.toFixed(0)} a.x=${a.x.toFixed(0)}`);
 }
 
+// ── 22. grab → throw ─────────────────────────────────────────────────────────
+{
+  const s = freshState();
+  const a = s.players[0], t = s.players[1];
+  a.x = 0; a.facing = 1; t.x = 42; t.grounded = true;
+  step(s, [{ b: BTN.GRAB, x: 0, y: 0 }, idle]);
+  for (let i = 0; i < 12 && t.act !== ACT.GRABBED; i++) step(s, [idle, idle]);
+  check('grab catches a nearby grounded opponent',
+    t.act === ACT.GRABBED && a.act === ACT.GRAB && a.grabbing === 1,
+    `t.act=${t.act} a.act=${a.act} grabbing=${a.grabbing}`);
+  for (let i = 0; i < 4; i++) step(s, [idle, idle]);        // settle the hold
+  step(s, [{ b: 0, x: 1, y: 0 }, idle]);                    // forward throw
+  check('forward throw launches the victim',
+    t.act === ACT.HITSTUN && t.percent > 0 && a.grabbing === -1 && t.grabbedBy === -1,
+    `t.act=${t.act} t%=${t.percent}`);
+}
+
+// ── 23. grab whiffs into nothing (punishable) ────────────────────────────────
+{
+  const s = freshState();
+  const a = s.players[0], t = s.players[1];
+  a.x = 0; a.facing = 1; t.x = 400;            // far away — nothing to grab
+  step(s, [{ b: BTN.GRAB, x: 0, y: 0 }, idle]);
+  for (let i = 0; i < 40 && a.act === ACT.GRAB; i++) step(s, [idle, idle]);
+  check('whiffed grab recovers back to neutral', a.act === ACT.FREE && a.grabbing === -1,
+    `a.act=${a.act}`);
+}
+
+// ── 23b. pummel damages, and mashing breaks the grab ─────────────────────────
+{
+  const s = freshState();
+  const a = s.players[0], t = s.players[1];
+  a.x = 0; a.facing = 1; t.x = 42; t.grounded = true;
+  step(s, [{ b: BTN.GRAB, x: 0, y: 0 }, idle]);
+  for (let i = 0; i < 12 && t.act !== ACT.GRABBED; i++) step(s, [idle, idle]);
+  const before = t.percent;
+  // pummel a couple of times (alternate press so edges register)
+  for (let i = 0; i < 6; i++) step(s, [{ b: i % 2 ? BTN.ATTACK : 0, x: 0, y: 0 }, idle]);
+  check('pummel adds damage to the held victim', t.percent > before, `${before} → ${t.percent}`);
+  // victim mashes buttons + wiggles to escape
+  let freed = false;
+  for (let i = 0; i < 60; i++) {
+    const vin = { b: i % 2 ? BTN.JUMP : 0, x: i % 2 ? 1 : -1, y: 0 };
+    step(s, [idle, vin]);
+    if (t.act !== ACT.GRABBED) { freed = true; break; }
+  }
+  check('mashing breaks free of the grab', freed && a.grabbing === -1 && t.grabbedBy === -1,
+    `t.act=${t.act} grabbing=${a.grabbing}`);
+}
+
+// ── 24. charged smash attack hits harder than a tap ──────────────────────────
+{
+  function ftiltDamage(charge) {
+    const s = freshState();
+    const a = s.players[0], t = s.players[1];
+    a.x = -40; a.facing = 1; t.x = 20; t.percent = 0; t.grounded = true;
+    if (charge) {
+      const hold = { b: BTN.ATTACK, x: 1, y: 0 };
+      for (let i = 0; i < NB_CHARGE.max + 30; i++) step(s, [hold, idle]);
+    } else {
+      step(s, [{ b: BTN.ATTACK, x: 1, y: 0 }, idle]);
+      for (let i = 0; i < 40; i++) step(s, [idle, idle]);
+    }
+    return t.percent;
+  }
+  const tap = ftiltDamage(false);
+  const charged = ftiltDamage(true);
+  check('holding ATTACK charges a smash that hits much harder',
+    tap > 0 && charged > tap * 1.5, `tap=${tap} charged=${charged.toFixed(1)}`);
+}
+
 console.log(failures ? `\n${failures} failure(s)` : '\nALL PASS');
 process.exit(failures ? 1 : 0);

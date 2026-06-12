@@ -137,10 +137,13 @@ export class Renderer {
     }
     const padX = 320, padY = 240;
     minX -= padX; maxX += padX; minY -= padY; maxY += padY + 60;
-    minY = Math.min(minY, -380);
-    maxY = Math.max(maxY, 130);
+    // Bound how far the camera chases vertically: a fighter launched far above
+    // or below the band flies off-screen (and gets an off-screen indicator)
+    // instead of the camera zooming the whole stage out to keep them in view.
+    minY = clamp(minY, -560, -380);   // always show headroom to -380, never chase past -560
+    maxY = clamp(maxY, 130, 360);     // always show the floor to 130, never chase past 360
     const w = this.canvas.width, h = this.canvas.height;
-    const targetZoom = clamp(Math.min(w / (maxX - minX), h / (maxY - minY)), h / 1900, h / 950);
+    const targetZoom = clamp(Math.min(w / (maxX - minX), h / (maxY - minY)), h / 1700, h / 950);
     const tx = clamp((minX + maxX) / 2, -460, 460);
     const ty = clamp((minY + maxY) / 2, -560, 60);
     const k = 1 - Math.pow(0.0018, dt);
@@ -671,6 +674,49 @@ export class Renderer {
           ctx.beginPath();
           ctx.moveTo(-4, 12); ctx.quadraticCurveTo(1, 12 - pr.r * 1.1, 6, 12);
           ctx.closePath(); ctx.fill();
+          break;
+        }
+        case 'shock': {
+          // a quake eruption "bang" — rock & dust blasts up out of the floor
+          const k = Math.max(0, Math.min(1, pr.life / 14));
+          const age = 1 - k;
+          const R = pr.r;
+          const lift = Math.sin(Math.min(1, age * 1.3) * Math.PI);   // up, then settle
+          ctx.globalAlpha = k;
+          ctx.shadowColor = c.glow; ctx.shadowBlur = 18;
+          // base flash on impact
+          if (age < 0.45) {
+            const fg = ctx.createRadialGradient(0, 6, 2, 0, 6, R * 1.3);
+            fg.addColorStop(0, '#ffffff');
+            fg.addColorStop(0.4, c.accent);
+            fg.addColorStop(1, c.glow + '00');
+            ctx.globalAlpha = k * (1 - age / 0.45);
+            ctx.fillStyle = fg;
+            ctx.beginPath(); ctx.arc(0, 6, R * 1.3, 0, TAU); ctx.fill();
+            ctx.globalAlpha = k;
+          }
+          // rock shards bursting upward
+          ctx.fillStyle = c.accent;
+          const n = 5;
+          for (let j = 0; j < n; j++) {
+            const sx = (j - (n - 1) / 2) * R * 0.42;
+            const hh = R * (1.1 + (j % 2) * 0.55) * lift;
+            ctx.beginPath();
+            ctx.moveTo(sx - R * 0.17, 8);
+            ctx.lineTo(sx + (j % 2 ? 3 : -3), 8 - hh);
+            ctx.lineTo(sx + R * 0.17, 8);
+            ctx.closePath(); ctx.fill();
+          }
+          // bright core spike
+          ctx.fillStyle = '#ffffff'; ctx.globalAlpha = k * 0.85;
+          ctx.beginPath();
+          ctx.moveTo(-R * 0.14, 8); ctx.lineTo(0, 8 - R * 1.7 * lift); ctx.lineTo(R * 0.14, 8);
+          ctx.closePath(); ctx.fill();
+          // spreading ground crack ring
+          ctx.globalAlpha = k * 0.7;
+          ctx.strokeStyle = c.accent; ctx.lineWidth = 2.4;
+          ctx.beginPath(); ctx.ellipse(0, 9, R * (0.6 + age * 1.0), R * 0.22, 0, 0, TAU); ctx.stroke();
+          ctx.shadowBlur = 0;
           break;
         }
         case 'boom': {

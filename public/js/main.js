@@ -218,12 +218,52 @@ $('#btn-invite-decline').addEventListener('click', () => {
 
 // ── menu actions ────────────────────────────────────────────────────────────
 
+let queuedMatch = false;          // we found this room via the quick-match queue
+let matchFoundActive = false;     // the "MATCH FOUND" splash is counting down
+let matchFoundTimers = [];
+
 $('#btn-quick').addEventListener('click', () => { sfx.select(); net.send({ t: 'queue' }); });
 $('#btn-practice').addEventListener('click', () => { sfx.select(); net.send({ t: 'practice' }); });
 $('#btn-cancel-queue').addEventListener('click', () => { sfx.click(); net.send({ t: 'unqueue' }); });
 
-net.on('queued', () => $('#queue-overlay').classList.add('open'));
-net.on('unqueued', () => $('#queue-overlay').classList.remove('open'));
+net.on('queued', () => { queuedMatch = true; $('#queue-overlay').classList.add('open'); });
+net.on('unqueued', () => { queuedMatch = false; $('#queue-overlay').classList.remove('open'); });
+
+// MATCH FOUND splash → short countdown → reveal character select
+function startMatchFound(msg) {
+  matchFoundActive = true;
+  const opp = msg.players?.find(p => p.uid !== me?.uid);
+  $('#mf-opp').textContent = opp ? `${opp.username}${opp.bot ? ' 🤖' : ''}` : 'opponent';
+  $('#mf-count').textContent = '';
+  $('#matchfound-overlay').classList.add('open');
+  sfx.ready();
+  let n = 3;
+  const tick = () => {
+    if (n > 0) {
+      $('#mf-count').textContent = n;
+      sfx.count();
+      n--;
+      matchFoundTimers.push(setTimeout(tick, 850));
+    } else {
+      matchFoundTimers.push(setTimeout(() => {
+        cancelMatchFound();
+        if (room && room.phase === 'select') {
+          show('screen-select');
+          animateSelect();
+          refreshSelectUI();
+        }
+      }, 450));
+    }
+  };
+  tick();
+}
+
+function cancelMatchFound() {
+  matchFoundTimers.forEach(clearTimeout);
+  matchFoundTimers = [];
+  matchFoundActive = false;
+  $('#matchfound-overlay').classList.remove('open');
+}
 
 $('#btn-howto').addEventListener('click', () => { sfx.click(); $('#howto-modal').classList.add('open'); });
 $('#btn-swap-ab').addEventListener('click', () => {
@@ -248,6 +288,8 @@ document.addEventListener('pad', (e) => {
   if (e.detail.connected) {
     el.classList.add('on');
     el.title = e.detail.name;
+    // a controller showed up — dismiss the "controller recommended" popup
+    $('#pad-recommend-modal').classList.remove('open');
     toast('Controller connected', 'ok');
   } else {
     el.classList.remove('on');
@@ -255,6 +297,15 @@ document.addEventListener('pad', (e) => {
   }
 });
 if (padConnected()) $('#pad-indicator').classList.add('on');
+
+// controller-recommended popup — shown on load until a pad is detected
+$('#btn-pad-continue').addEventListener('click', () => {
+  sfx.click();
+  $('#pad-recommend-modal').classList.remove('open');
+});
+function maybeShowPadRecommend() {
+  if (!padConnected()) $('#pad-recommend-modal').classList.add('open');
+}
 
 // ── character select ────────────────────────────────────────────────────────
 
@@ -378,10 +429,16 @@ net.on('room', (msg) => {
     // stay put and let the results screen take over; REMATCH routes to select
     const resultsPending = lastResults || (match && match.over) ||
       $('#screen-results').classList.contains('active');
-    if (!resultsPending) {
+    if (!resultsPending && !matchFoundActive) {
       if (match) { match.stop(); match = null; }
-      show('screen-select');
-      animateSelect();
+      if (queuedMatch) {
+        // quick match: play the MATCH FOUND countdown, then reveal select
+        queuedMatch = false;
+        startMatchFound(msg);
+      } else {
+        show('screen-select');
+        animateSelect();
+      }
     }
     // sync our pick only if the server doesn't have it yet — re-sending
     // unconditionally created a broadcast feedback loop
@@ -394,6 +451,7 @@ net.on('room', (msg) => {
 });
 
 net.on('start', (msg) => {
+  cancelMatchFound();
   room = { ...room, phase: 'playing' };
   lastResults = null;
   show('screen-game');
@@ -438,6 +496,8 @@ net.on('roomGone', () => {
     room = null;
     readySent = false;
     lastResults = null;
+    queuedMatch = false;
+    cancelMatchFound();
     show('screen-menu');
     toast('Your match ended while you were away', 'error');
   }
@@ -502,6 +562,8 @@ function leaveToMenu() {
   room = null;
   lastResults = null;
   readySent = false;
+  queuedMatch = false;
+  cancelMatchFound();
   $('#queue-overlay').classList.remove('open');
   show(me ? 'screen-menu' : 'screen-auth');
 }
@@ -723,4 +785,5 @@ buildSelectGrid();
 refreshSelectUI();
 menuBackground();
 show('screen-auth');
+maybeShowPadRecommend();
 net.connect();

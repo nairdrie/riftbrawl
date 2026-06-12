@@ -92,6 +92,24 @@ export const sfx = {
   chargeTick(t = 0) { tone({ type: 'sine', f0: 300 + t * 500, f1: 340 + t * 520, dur: 0.07, peak: 0.09 }); },
   chargeFull() { tone({ type: 'triangle', f0: 880, f1: 1180, dur: 0.18, peak: 0.16 }); },
 
+  // grab / pummel / throw
+  grab()       { noise({ dur: 0.1, peak: 0.1, hp: 1800, lp: 6000 }); tone({ type: 'square', f0: 320, f1: 200, dur: 0.08, peak: 0.08 }); },
+  grabCatch()  { tone({ type: 'square', f0: 240, f1: 150, dur: 0.1, peak: 0.16 }); noise({ dur: 0.09, peak: 0.12, lp: 1500 }); },
+  pummel()     { noise({ dur: 0.06, peak: 0.12, lp: 1800 }); tone({ type: 'square', f0: 200, f1: 120, dur: 0.07, peak: 0.12 }); },
+  throw()      { noise({ dur: 0.14, peak: 0.14, hp: 1400 }); tone({ type: 'sawtooth', f0: 420, f1: 110, dur: 0.18, peak: 0.16 }); },
+
+  // aegis quake eruption — deep ground "bang", bigger when further/charged
+  quake(power = 0.5) {
+    const p = Math.min(1, power);
+    noise({ dur: 0.22 + p * 0.18, peak: 0.2 + p * 0.22, lp: 520 + p * 260 });
+    tone({ type: 'sine', f0: 110 - p * 30, f1: 30, dur: 0.34 + p * 0.2, peak: 0.26 + p * 0.16 });
+    tone({ type: 'square', f0: 70, f1: 24, dur: 0.4, peak: 0.14 + p * 0.1 });
+  },
+
+  // special-move polish
+  counter()    { tone({ type: 'square', f0: 1400, f1: 500, dur: 0.16, peak: 0.22 }); tone({ type: 'triangle', f0: 700, f1: 1500, dur: 0.18, peak: 0.14 }); },
+  reflect()    { tone({ type: 'sine', f0: 1700, f1: 900, dur: 0.14, peak: 0.16 }); noise({ dur: 0.06, peak: 0.06, hp: 4000 }); },
+
   hit(power = 5) {
     const p = Math.min(1, power / 16);
     noise({ dur: 0.1 + p * 0.16, peak: 0.22 + p * 0.3, lp: 2200 - p * 800 });
