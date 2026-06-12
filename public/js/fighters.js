@@ -5,7 +5,7 @@
 // Convention: feet at (0,0), y negative = up, +x = facing direction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { ACT } from '/shared/constants.js';
+import { ACT, NB_CHARGE } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 
 const TAU = Math.PI * 2;
@@ -102,6 +102,7 @@ function computePose(p, char, t) {
         pose.lean = lerp(0.2, 0, rt);
       }
       if (m === 'db') pose.crouch = f < from ? 0.5 * clamp01(f / from) : 0.2;
+      if (m === 'dtilt') pose.crouch = 0.55;     // low attack stays low
       if (m === 'ub') pose.lean = -0.2;
       break;
     }
@@ -445,6 +446,23 @@ export function drawFighter(ctx, p, t, opts = {}) {
     ctx.closePath();
     ctx.fill();
     glowOff(ctx);
+  }
+
+  // ── neutral-B charge orb
+  if (p.moveId === 'nb' && (p.charge || 0) > 0) {
+    const t = Math.min(1, p.charge / NB_CHARGE.max);
+    const orbR = (5 + t * 16) * s * (t >= 1 ? 1 + Math.sin(p.charge * 0.9) * 0.12 : 1);
+    glowOn(ctx, c.glow, 18 + t * 22);
+    disc(ctx, handX + 14 * s, handY, orbR, c.accent);
+    disc(ctx, handX + 14 * s, handY, orbR * 0.55, '#ffffff');
+    glowOff(ctx);
+    // orbiting motes as it charges
+    const n = Math.floor(t * 4);
+    for (let i = 0; i < n; i++) {
+      const a = p.charge * 0.18 + (i / Math.max(1, n)) * TAU;
+      disc(ctx, handX + 14 * s + Math.cos(a) * orbR * 1.8, handY + Math.sin(a) * orbR * 1.8,
+        2.2 * s, c.trail);
+    }
   }
 
   // ── windup charge sparkle

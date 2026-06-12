@@ -230,7 +230,7 @@ export class MatchClient {
       players: view.players.map(p => ({
         x: p.x, y: p.y, percent: p.percent, stocks: p.stocks,
         grounded: p.grounded, act: p.act, vy: p.vy, shield: p.shield, moveId: p.moveId,
-        fastFalling: p.fastFalling,
+        fastFalling: p.fastFalling, charge: p.charge,
       })),
       phase: view.phase,
     };
@@ -289,6 +289,12 @@ export class MatchClient {
       if (!p.grounded && !q.grounded && p.vy < -10 && q.vy > -2 && p.act === ACT.FREE) {
         sfx.djump();
         this.renderer.spawn({ type: 'ring', x: p.x, y: p.y, vx: 0, vy: 0, life: 0.3, size: 18, color: char.colors.trail });
+      }
+      // neutral-B charge feedback
+      const ch = p.charge || 0, qch = q.charge || 0;
+      if (ch > qch) {
+        if (ch % 14 === 0) sfx.chargeTick(Math.min(1, ch / 66));
+        if (ch === 66) { sfx.chargeFull(); if (i === this.myIdx) rumble(0.2, 0.4, 90); }
       }
       // fast fall kick
       if (p.fastFalling && !q.fastFalling) {

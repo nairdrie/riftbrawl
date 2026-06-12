@@ -89,6 +89,8 @@ export const sfx = {
   land()       { noise({ dur: 0.07, peak: 0.08, lp: 900 }); },
   whiff()      { noise({ dur: 0.09, peak: 0.07, hp: 2200 }); },
   shoot()      { tone({ type: 'square', f0: 880, f1: 320, dur: 0.12, peak: 0.1 }); noise({ dur: 0.06, peak: 0.05, hp: 2500 }); },
+  chargeTick(t = 0) { tone({ type: 'sine', f0: 300 + t * 500, f1: 340 + t * 520, dur: 0.07, peak: 0.09 }); },
+  chargeFull() { tone({ type: 'triangle', f0: 880, f1: 1180, dur: 0.18, peak: 0.16 }); },
 
   hit(power = 5) {
     const p = Math.min(1, power / 16);

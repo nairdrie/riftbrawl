@@ -8,7 +8,7 @@ import { MatchClient } from './game.js';
 import { Renderer } from './renderer.js';
 import { drawPortrait } from './fighters.js';
 import { CHARACTERS, CHARACTER_LIST } from '/shared/characters.js';
-import { padConnected, samplePadMenu } from './input.js';
+import { padConnected, samplePadMenu, getSwapAB, setSwapAB } from './input.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -226,6 +226,15 @@ net.on('queued', () => $('#queue-overlay').classList.add('open'));
 net.on('unqueued', () => $('#queue-overlay').classList.remove('open'));
 
 $('#btn-howto').addEventListener('click', () => { sfx.click(); $('#howto-modal').classList.add('open'); });
+$('#btn-swap-ab').addEventListener('click', () => {
+  const v = !getSwapAB();
+  setSwapAB(v);
+  $('#btn-swap-ab').classList.toggle('on', v);
+  $('#btn-swap-ab').textContent = v ? 'SWAP A/B: ON' : 'SWAP A/B: OFF';
+  toast(v ? 'Face buttons swapped' : 'Standard face buttons');
+});
+$('#btn-swap-ab').classList.toggle('on', getSwapAB());
+$('#btn-swap-ab').textContent = getSwapAB() ? 'SWAP A/B: ON' : 'SWAP A/B: OFF';
 $('#btn-howto-close').addEventListener('click', () => { sfx.click(); $('#howto-modal').classList.remove('open'); });
 
 $('#mute-btn').addEventListener('click', () => {
@@ -294,22 +303,26 @@ function pickChar(id) {
 function refreshSelectUI() {
   $$('.char-card').forEach(card => {
     card.classList.toggle('selected', card.dataset.char === selectedChar);
+    card.classList.toggle('locked', readySent && card.dataset.char === selectedChar);
   });
   const c = CHARACTERS[selectedChar];
   $('#select-desc').textContent = c.desc;
-  $('#btn-ready').disabled = readySent;
-  $('#btn-ready').textContent = readySent ? 'WAITING…' : 'READY';
+  const btn = $('#btn-ready');
+  btn.disabled = false;
+  btn.classList.toggle('is-ready', readySent);
+  btn.innerHTML = readySent ? '✓ READY <small>tap to cancel</small>' : 'READY';
 
   if (room) {
-    const opp = room.players.find(p => p.uid !== me?.uid);
+    const opp = room.players?.find(p => p.uid !== me?.uid);
     const oppEl = $('#select-opp');
     if (opp) {
       const oc = opp.charId ? CHARACTERS[opp.charId] : null;
+      const status = opp.dc ? '⚠ reconnecting…' : opp.ready ? '✓ READY' : 'not ready';
       oppEl.innerHTML = `
         <div class="opp-name">${esc(opp.username)}${opp.bot ? ' 🤖' : ''}</div>
         <div class="opp-pick" style="color:${oc ? oc.colors.accent : '#5d688c'}">
           ${oc ? oc.name : 'choosing…'}</div>
-        <div class="opp-ready ${opp.ready ? 'rdy' : ''}">${opp.ready ? '✓ READY' : 'not ready'}</div>`;
+        <div class="opp-ready ${opp.ready ? 'rdy' : ''} ${opp.dc ? 'dc' : ''}">${status}</div>`;
     } else {
       oppEl.innerHTML = `<div class="opp-name">waiting…</div>`;
     }
@@ -333,10 +346,16 @@ function animateSelect() {
 }
 
 function readyUp() {
-  if (readySent) return;
-  readySent = true;
-  sfx.ready();
-  net.send({ t: 'ready', charId: selectedChar });
+  if (readySent) {
+    // tap again to cancel
+    readySent = false;
+    sfx.click();
+    net.send({ t: 'unready' });
+  } else {
+    readySent = true;
+    sfx.ready();
+    net.send({ t: 'ready', charId: selectedChar });
+  }
   refreshSelectUI();
 }
 $('#btn-ready').addEventListener('click', readyUp);
@@ -353,7 +372,8 @@ net.on('room', (msg) => {
   room = msg;
   $('#queue-overlay').classList.remove('open');
   if (msg.phase === 'select') {
-    readySent = false;
+    // trust the server's view of our ready state (covers reconnects)
+    readySent = !!msg.players?.find(p => p.uid === me?.uid)?.ready;
     // a match that just finished sends the rematch lobby right behind 'end' —
     // stay put and let the results screen take over; REMATCH routes to select
     const resultsPending = lastResults || (match && match.over) ||
@@ -363,7 +383,12 @@ net.on('room', (msg) => {
       show('screen-select');
       animateSelect();
     }
-    net.send({ t: 'selectChar', charId: selectedChar });
+    // sync our pick only if the server doesn't have it yet — re-sending
+    // unconditionally created a broadcast feedback loop
+    const mine = msg.players?.find(p => p.uid === me?.uid);
+    if (mine && !mine.ready && mine.charId !== selectedChar) {
+      net.send({ t: 'selectChar', charId: selectedChar });
+    }
     refreshSelectUI();
   }
 });
@@ -459,7 +484,10 @@ $('#btn-rematch').addEventListener('click', () => {
   readySent = false;
   show('screen-select');
   animateSelect();
-  net.send({ t: 'selectChar', charId: selectedChar });
+  const minePick = room?.players?.find(p => p.uid === me?.uid);
+  if (!minePick || minePick.charId !== selectedChar) {
+    net.send({ t: 'selectChar', charId: selectedChar });
+  }
   refreshSelectUI();
 });
 

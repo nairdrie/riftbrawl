@@ -139,6 +139,7 @@ export class Room {
         uid: m.uid, username: m.username, bot: !!m.isBot,
         charId: this.picks.get(m.uid)?.charId || null,
         ready: !!this.picks.get(m.uid)?.ready,
+        dc: this.dcWait.has(m.uid),
       })),
     });
   }
@@ -147,7 +148,16 @@ export class Room {
     if (this.phase !== 'select' || !CHARACTERS[charId]) return;
     const pick = this.picks.get(uid);
     if (!pick || pick.ready) return;
+    if (pick.charId === charId) return;   // no change → no broadcast (feedback-loop guard)
     pick.charId = charId;
+    this.broadcastLobby();
+  }
+
+  setUnready(uid) {
+    if (this.phase !== 'select') return;
+    const pick = this.picks.get(uid);
+    if (!pick || !pick.ready) return;
+    pick.ready = false;
     this.broadcastLobby();
   }
 
@@ -282,17 +292,20 @@ export class Room {
   memberDisconnected(uid) {
     const m = this.members.find(mm => mm.uid === uid);
     if (!m) return;
-    if (!this.state || this.state.phase === PHASE.OVER) {
-      // lobby / between matches — no grace needed
-      this.removeMember(uid, 'disconnected');
-      return;
-    }
     if (this.dcTimers.has(uid)) return;
     m.send = () => {};            // dead sink until they come back
     this.dcWait.add(uid);
-    this.paused = true;
-    this.resumeAt = 0;
-    this.broadcast({ t: 'paused', by: m.username, reason: 'disconnected', graceMs: 30000 });
+    if (this.state && this.state.phase !== PHASE.OVER) {
+      // mid-match: freeze the game
+      this.paused = true;
+      this.resumeAt = 0;
+      this.broadcast({ t: 'paused', by: m.username, reason: 'disconnected', graceMs: 30000 });
+    } else {
+      // character select / results: hold the seat, show "reconnecting…"
+      const pick = this.picks.get(uid);
+      if (pick) pick.ready = false;
+      this.broadcastLobby();
+    }
     this.dcTimers.set(uid, setTimeout(() => {
       this.dcTimers.delete(uid);
       this.dcWait.delete(uid);

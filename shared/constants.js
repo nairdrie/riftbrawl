@@ -69,6 +69,15 @@ export const DASH = {
 
 export const CROUCH_KB = 0.82;  // crouch-cancel knockback multiplier
 
+// neutral-B charge: hold special to charge, release to fire (auto at max)
+export const NB_CHARGE = {
+  max: 66,        // ticks to full charge (~1.1s)
+  dmg: 1.3,       // +130% damage at full charge
+  speed: 0.45,    // +45% projectile speed
+  size: 0.8,      // +80% radius
+  kb: 0.7,        // +70% base knockback / growth
+};
+
 export const BODY_PUSH = {
   range: 34,         // horizontal distance under which grounded bodies push
   resolve: 0.5,      // fraction of the overlap resolved per tick

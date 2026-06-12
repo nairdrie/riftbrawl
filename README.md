@@ -43,10 +43,13 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 - **Reconnect grace** — if a player's connection drops mid-match, the game
   auto-pauses and holds their seat for 30 seconds; reconnecting (even after
   a page refresh) resyncs the full match state and resumes with a countdown.
-- **Kits** — every character has jab / f-tilt / up-tilt / d-tilt, five
-  aerials (nair/fair/bair/uair/dair), and four specials (neutral B
-  projectile, side B rush, up B recovery, down B burst). Direction + button,
-  exactly like you expect.
+- **Kits** — every character has jab / f-tilt / up-tilt / d-tilt (the low
+  attack, usable straight out of a crouch), five aerials
+  (nair/fair/bair/uair/dair), and four specials (neutral B projectile,
+  side B rush, up B recovery, down B burst). Direction + button, exactly
+  like you expect.
+- **Charge shots** — hold neutral-B to charge it (bigger, faster, harder
+  knockback; auto-fires at max). Getting hit drops your charge.
 - **Defense** — hold shield (it shrinks, breaks, and regenerates),
   shield-stun, shield-break stun.
 
@@ -78,7 +81,9 @@ Menus are fully controller-navigable: d-pad or stick to move the focus ring,
 when selected with the pad (B = backspace), so sign-in and adding friends
 work without ever touching the keyboard. Controllers rumble on hits and KOs.
 (Browsers only expose a gamepad after you press any button on it with the
-page focused — the 🎮 icon in the top bar lights up when it's detected.)
+page focused — the 🎮 icon in the top bar lights up when it's detected.
+If your pad reports its face buttons swapped — common with Nintendo-layout
+and some 8BitDo pads — flip **SWAP A/B** in the How To Fight screen.)
 
 ## Architecture
 

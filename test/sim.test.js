@@ -2,7 +2,7 @@
 // body push. Pure sim — no server. Run: node test/sim.test.js
 
 import { createGameState, step } from '../shared/sim.js';
-import { ACT, BTN, STAGE, PHASE, LEDGE } from '../shared/constants.js';
+import { ACT, BTN, STAGE, PHASE, LEDGE, NB_CHARGE } from '../shared/constants.js';
 
 let failures = 0;
 function check(name, cond, info = '') {
@@ -144,6 +144,46 @@ const idle = { b: 0, x: 0, y: 0 };
   step(s, [{ b: 0, x: 0, y: 1 }, idle]);
   check('fast fall snaps to full speed in one tick', p.vy > 12 && p.fastFalling,
     `vy ${before} → ${p.vy.toFixed(1)}`);
+}
+
+// ── 9. attack while crouched gives the low attack ───────────────────────────
+{
+  const s = freshState();
+  const p = s.players[0];
+  // settle into a crouch, then press attack while still holding down
+  for (let i = 0; i < 5; i++) step(s, [{ b: 0, x: 0, y: 1 }, idle]);
+  step(s, [{ b: BTN.ATTACK, x: 0, y: 1 }, idle]);
+  check('crouch + attack comes out as the low attack (dtilt)',
+    p.act === ACT.ATTACK && p.moveId === 'dtilt', `act=${p.act} move=${p.moveId}`);
+}
+
+// ── 10. chargeable neutral special ───────────────────────────────────────────
+{
+  // uncharged tap
+  const s1 = freshState();
+  step(s1, [{ b: BTN.SPECIAL, x: 0, y: 0 }, idle]);
+  for (let i = 0; i < 30; i++) step(s1, [idle, idle]);
+  const plain = s1.projectiles[0];
+  check('tapping special fires an uncharged shot', !!plain);
+
+  // hold to charge, then release
+  const s2 = freshState();
+  const p2 = s2.players[0];
+  const hold = { b: BTN.SPECIAL, x: 0, y: 0 };
+  step(s2, [hold, idle]);
+  for (let i = 0; i < 45; i++) step(s2, [hold, idle]);
+  check('holding special charges instead of firing', p2.charge > 30 && s2.projectiles.length === 0,
+    `charge=${p2.charge} projs=${s2.projectiles.length}`);
+  for (let i = 0; i < 10; i++) step(s2, [idle, idle]);
+  const charged = s2.projectiles[0];
+  check('release fires a bigger, harder shot', !!charged && charged.dmg > plain.dmg * 1.3 && charged.r > plain.r,
+    `dmg ${plain?.dmg} → ${charged?.dmg?.toFixed(1)}`);
+
+  // hold forever → auto-fire at max
+  const s3 = freshState();
+  for (let i = 0; i < NB_CHARGE.max + 30; i++) step(s3, [hold, idle]);
+  check('full charge auto-fires', s3.projectiles.length === 1 || s3.players[0].charge === 0,
+    `projs=${s3.projectiles.length} charge=${s3.players[0].charge}`);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : '\nALL PASS');

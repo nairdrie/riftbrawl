@@ -55,6 +55,20 @@ function dz(v) { return Math.abs(v) < DEADZONE ? 0 : (Math.abs(v) - DEADZONE) / 
 export function padConnected() { return gamepadIndex >= 0; }
 export function padName() { return gamepadName; }
 
+// Some pads (Nintendo-layout, certain 8BitDo/driver combos) report the face
+// buttons swapped relative to the standard mapping. Persisted user toggle.
+let swapAB = localStorage.getItem('smash_swap_ab') === '1';
+export function getSwapAB() { return swapAB; }
+export function setSwapAB(v) {
+  swapAB = !!v;
+  localStorage.setItem('smash_swap_ab', swapAB ? '1' : '0');
+}
+function faceBtn(gp, i) {
+  // i: 0 = "confirm/attack" face button, 1 = "back/special"
+  const idx = swapAB ? (i === 0 ? 1 : i === 1 ? 0 : i) : i;
+  return !!gp.buttons[idx]?.pressed;
+}
+
 // controller haptics — fire and forget
 export function rumble(strong = 0.6, weak = 0.4, ms = 120) {
   const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
@@ -84,8 +98,8 @@ export function samplePadMenu() {
   const gp = gamepadIndex >= 0 ? navigator.getGamepads()[gamepadIndex] : null;
   if (!gp) { prevPadB = 0; return out; }
   let b = 0;
-  if (gp.buttons[0]?.pressed) b |= 1;
-  if (gp.buttons[1]?.pressed) b |= 2;
+  if (faceBtn(gp, 0)) b |= 1;
+  if (faceBtn(gp, 1)) b |= 2;
   const x = dz(gp.axes[0] || 0), y = dz(gp.axes[1] || 0);
   if (x < -0.5 || gp.buttons[14]?.pressed) b |= 4;
   if (x > 0.5 || gp.buttons[15]?.pressed) b |= 8;
@@ -127,8 +141,8 @@ export function sampleInput() {
     if (gp.buttons[13]?.pressed) y = 1;
     if (gp.buttons[14]?.pressed) x = -1;
     if (gp.buttons[15]?.pressed) x = 1;
-    if (gp.buttons[0]?.pressed) b |= BTN.ATTACK;                          // A / Cross
-    if (gp.buttons[1]?.pressed) b |= BTN.SPECIAL;                         // B / Circle
+    if (faceBtn(gp, 0)) b |= BTN.ATTACK;                                  // bottom face button
+    if (faceBtn(gp, 1)) b |= BTN.SPECIAL;                                 // right face button
     if (gp.buttons[2]?.pressed || gp.buttons[3]?.pressed) b |= BTN.JUMP;  // X, Y
     if (gp.buttons[4]?.pressed || gp.buttons[5]?.pressed ||
         gp.buttons[6]?.pressed || gp.buttons[7]?.pressed) b |= BTN.SHIELD;

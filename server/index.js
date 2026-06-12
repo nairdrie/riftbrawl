@@ -182,14 +182,9 @@ function leaveRoom(session, reason = 'left') {
 function cleanup(session, notify = true) {
   leaveQueue(session.uid);
   if (session.room) {
-    const room = session.room;
-    if (room.state && room.members.some(m => m.uid === session.uid)) {
-      // mid-match: pause and hold the seat for 30s
-      room.memberDisconnected(session.uid);
-      session.room = null;
-    } else {
-      leaveRoom(session, 'disconnected');
-    }
+    // hold the seat (match or lobby) for the 30s grace window
+    session.room.memberDisconnected(session.uid);
+    session.room = null;
   }
   if (session.uid && sessions.get(session.uid) === session) {
     sessions.delete(session.uid);
@@ -304,6 +299,10 @@ const handlers = {
     session.room?.setReady(session.uid, String(msg.charId || ''));
   },
 
+  unready(session) {
+    session.room?.setUnready(session.uid);
+  },
+
   input(session, msg) {
     session.room?.handleInput(session.uid, msg);
   },
@@ -331,6 +330,9 @@ wss.on('connection', (ws) => {
     const fn = handlers[msg.t];
     if (!fn) return;
     if (!session.user && !UNAUTHED.has(msg.t)) return;
+    if (process.env.SMASH_TRACE && msg.t !== 'input') {
+      console.log('[trace]', session.username || '?', msg.t, msg.charId || '');
+    }
     if (!session.takeToken(SENSITIVE.has(msg.t))) {
       if (session.drops > 3000) ws.terminate();   // sustained flood — cut it off
       return;

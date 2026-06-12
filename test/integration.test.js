@@ -198,6 +198,33 @@ async function main() {
     a.send({ t: 'addFriend', username: 'bob' }); // no-op to trigger nothing
     await a.wait('toast').catch(() => {});
 
+    // ── un-ready works and select-phase disconnects hold the seat
+    a.drain('room'); b2.drain('room');
+    a.send({ t: 'ready', charId: 'volt' });
+    await a.wait('room', 5000, m => m.players?.some(p => p.username === 'alice' && p.ready));
+    a.send({ t: 'unready' });
+    const unr = await a.wait('room', 5000, m => m.players?.some(p => p.username === 'alice' && !p.ready));
+    check('un-ready cancels the ready state', !!unr);
+    // bob's socket blips during char select — seat held, lobby shows dc
+    b2.ws.terminate();
+    const dcLobby = await a.wait('room', 5000, m => m.players?.some(p => p.username === 'bob' && p.dc));
+    check('select-phase disconnect holds the seat (no instant dissolve)', !!dcLobby);
+    const b2b = new Client('bob2b');
+    await b2b.connect();
+    b2b.send({ t: 'resume', token: authB.token });
+    await b2b.wait('auth');
+    const backLobby = await b2b.wait('room', 5000, m => m.phase === 'select');
+    check('reconnect during select rejoins the lobby', !!backLobby);
+    await a.wait('room', 5000, m => m.players?.some(p => p.username === 'bob' && !p.dc));
+    // restore b2 handle for the tests below
+    b2.ws = b2b.ws; b2.msgs = b2b.msgs; b2.waiters = b2b.waiters;
+    b2b.ws.removeAllListeners('message');
+    b2.ws.on('message', (d) => {
+      const m = JSON.parse(d);
+      b2.msgs.push(m);
+      b2.waiters = b2.waiters.filter(w => !w(m));
+    });
+
     // ── mid-match disconnect → grace pause → reconnect → resync
     a.drain('room'); b2.drain('room'); a.drain('snap'); b2.drain('snap');
     a.drain('paused'); b2.drain('paused');

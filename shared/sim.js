@@ -8,7 +8,7 @@ import {
   STAGE, BTN, ACT, PHASE, STOCKS, COUNTDOWN_TICKS,
   RESPAWN_FREEZE, RESPAWN_INVULN, RESPAWN_PLATFORM_TICKS,
   SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELDBREAK_TICKS,
-  LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED,
+  LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED, NB_CHARGE,
 } from './constants.js';
 import { CHARACTERS } from './characters.js';
 
@@ -33,6 +33,7 @@ export function createPlayer(uid, charId, idx) {
     exhausted: false, fastFalling: false,
     prevB: 0, prevX: 0,
     dashTimer: 0, ledgeTimer: 0, regrabTimer: 0,
+    charge: 0,
     lastIn: { b: 0, x: 0, y: 0 },
   };
 }
@@ -136,6 +137,7 @@ function applyHit(target, tChar, hit, dirX, events, state) {
   target.actFrame = 0;
   target.moveId = '';
   target.fastFalling = false;
+  target.charge = 0;
   if (target.vy < 0 && target.grounded) { target.grounded = false; target.y -= 2; }
   events.push({ type: 'hit', x: target.x, y: target.y - 40, dmg: hit.dmg, kb, victim: target.idx });
 }
@@ -245,15 +247,26 @@ function updatePlayer(p, inp, char, state, events) {
       const f = p.actFrame;
       if (isSpecialMove(p.moveId)) {
         const sp = char.specials[p.moveId];
-        if (sp.type === 'projectile' && f === sp.fire) {
+        if (sp.type === 'projectile' && f === sp.fire &&
+            (inp.b & BTN.SPECIAL) && p.charge < NB_CHARGE.max) {
+          // holding special: charge instead of firing
+          p.actFrame = sp.fire - 1;
+          p.charge++;
+        } else if (sp.type === 'projectile' && f === sp.fire) {
+          const t = p.charge / NB_CHARGE.max;
           state.projectiles.push({
             id: state.nextProjId++, owner: p.idx, charId: p.charId,
             x: p.x + p.facing * 46 * char.scale, y: p.y - 42 * char.scale,
-            vx: sp.speed * p.facing, vy: sp.vy0, grav: sp.grav,
-            r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg,
+            vx: sp.speed * (1 + NB_CHARGE.speed * t) * p.facing, vy: sp.vy0, grav: sp.grav,
+            r: sp.r * (1 + NB_CHARGE.size * t),
+            dmg: sp.dmg * (1 + NB_CHARGE.dmg * t),
+            angle: sp.angle,
+            bkb: sp.bkb * (1 + NB_CHARGE.kb * t),
+            kbg: sp.kbg * (1 + NB_CHARGE.kb * t),
             life: sp.life,
           });
-          events.push({ type: 'shoot', x: p.x, y: p.y - 42, who: p.idx });
+          events.push({ type: 'shoot', x: p.x, y: p.y - 42, who: p.idx, charge: t });
+          p.charge = 0;
         } else if (sp.type === 'dash' && f >= sp.from && f <= sp.to) {
           p.vx = sp.speed * p.facing;
           p.vy = Math.min(p.vy, 0.5);
@@ -617,9 +630,11 @@ export function step(state, inputs) {
         if (tgt.idx === pr.owner) continue;
         if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN) continue;
         const tChar = CHARACTERS[tgt.charId];
-        const cx = tgt.x, cy = tgt.y - 40 * tChar.scale;
+        const crouched = isCrouching(tgt);
+        const cx = tgt.x, cy = tgt.y - (crouched ? 28 : 40) * tChar.scale;
+        const thr = tChar.hurtR * (crouched ? 0.85 : 1);
         const dx = pr.x - cx, dy = pr.y - cy;
-        if (dx * dx + dy * dy <= (pr.r + tChar.hurtR) * (pr.r + tChar.hurtR)) {
+        if (dx * dx + dy * dy <= (pr.r + thr) * (pr.r + thr)) {
           const dirX = pr.vx === 0 ? 1 : Math.sign(pr.vx);
           if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, pr, dirX, events);
           else applyHit(tgt, tChar, pr, dirX, events, state);
@@ -658,7 +673,7 @@ const P_FIELDS = [
   'x', 'y', 'vx', 'vy', 'facing', 'percent', 'stocks', 'jumpsLeft',
   'act', 'actFrame', 'hitMask', 'stun', 'hitlag', 'shield', 'invuln',
   'respawnTimer', 'platTimer', 'prevB', 'prevX', 'dashTimer',
-  'ledgeTimer', 'regrabTimer',
+  'ledgeTimer', 'regrabTimer', 'charge',
 ];
 
 export function serializeState(state) {

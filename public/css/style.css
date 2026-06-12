@@ -578,6 +578,30 @@ input:focus {
 }
 #conn-banner.visible { transform: none; }
 
+/* ── ready state & lobby status ──────────────────────────────────────── */
+
+.btn-primary.is-ready {
+  background: linear-gradient(92deg, #2fbf71, #56e39f);
+  box-shadow: 0 6px 26px rgba(86, 227, 159, 0.45);
+}
+.btn-primary.is-ready small {
+  display: block; font-size: 11px; font-weight: 600;
+  letter-spacing: 0.12em; opacity: 0.75;
+}
+.char-card.locked { filter: saturate(1.2); }
+.char-card.locked::after {
+  content: '✓ LOCKED';
+  position: absolute; top: 10px; right: 10px;
+  font-family: var(--display); font-weight: 700; font-size: 10px;
+  letter-spacing: 0.14em;
+  color: #061018; background: var(--green);
+  padding: 3px 8px; border-radius: 6px;
+}
+.opp-ready.dc { color: var(--gold); animation: pulseGlow 1.2s infinite; }
+
+.swap-ab { margin-top: 14px; font-size: 12px; padding: 8px 14px; }
+.swap-ab.on { color: var(--cyan); border-color: var(--cyan); }
+
 /* ── danger button & confirm ─────────────────────────────────────────── */
 
 .btn-danger {
