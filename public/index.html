@@ -1,66 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Smash</title>
-    <style>
-      body { margin: 0; overflow: hidden; background: #12141f; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
-      canvas { display: block; }
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RIFTBRAWL — Platform Fighter</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚔️</text></svg>" />
+</head>
+<body data-screen="screen-auth">
 
-      #startMenu {
-        position: fixed; inset: 0; z-index: 10;
-        background: radial-gradient(ellipse at 50% 30%, #1c2033 0%, #12141f 70%);
-        display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 26px;
-        color: #e8eaf2;
-      }
-      #startMenu h1 { margin: 0; font-size: 44px; letter-spacing: 10px; }
-      #startMenu .sub { margin: -16px 0 0; font-size: 13px; color: #9aa1b9; letter-spacing: 3px; text-transform: uppercase; }
-      #charGrid { display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; max-width: 980px; }
-      .charCard {
-        width: 205px; padding: 16px 16px 14px; border-radius: 14px; cursor: pointer;
-        background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.1);
-        transition: transform 0.12s, border-color 0.12s, background 0.12s;
-      }
-      .charCard:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.09); }
-      .charCard.selected { border-color: var(--accent); background: rgba(255, 255, 255, 0.1);
-        box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 35%, transparent); }
-      .charCard h2 { margin: 0; font-size: 19px; color: var(--accent); }
-      .charCard .role { margin: 2px 0 9px; font-size: 11px; letter-spacing: 1.4px; text-transform: uppercase; color: var(--accent); opacity: 0.85; }
-      .charCard ul { margin: 0; padding-left: 16px; font-size: 12px; line-height: 1.5; color: #c3c8d9; }
-      .charCard .key { float: right; font-size: 12px; color: #8e95ad; border: 1px solid #3a405a; border-radius: 5px; padding: 0 6px; }
-      #startButton {
-        font: 700 17px system-ui, sans-serif; letter-spacing: 2px; color: #12141f; cursor: pointer;
-        background: #e8eaf2; border: none; border-radius: 10px; padding: 13px 46px;
-        transition: transform 0.08s, background 0.12s;
-      }
-      #startButton:hover { background: #ffffff; transform: scale(1.04); }
-      #controlsHint { font-size: 12px; color: #8e95ad; letter-spacing: 0.5px; }
+  <canvas id="bg-canvas"></canvas>
 
-      #hud {
-        position: fixed; top: 16px; left: 16px; z-index: 5;
-        color: #e8eaf2; background: rgba(16, 18, 30, 0.6); border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.09); padding: 10px 16px; min-width: 150px;
-      }
-      .hudRow { display: flex; justify-content: space-between; gap: 18px; font-size: 14px; line-height: 1.7; }
-      .hudName { font-weight: 600; }
-      .hudPct { font-weight: 800; font-variant-numeric: tabular-nums; }
-    </style>
-  </head>
-  <body>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="lib/GLTFLoader.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
+  <div id="conn-banner">⚠ Connection lost — reconnecting…</div>
 
-    <div id="startMenu">
-      <h1>SMASH</h1>
-      <p class="sub">choose your fighter</p>
-      <div id="charGrid"></div>
-      <button id="startButton">FIGHT</button>
-      <p id="controlsHint">←→ / AD move &nbsp;·&nbsp; Space jump (×2) &nbsp;·&nbsp; F attack &nbsp;·&nbsp; G special &nbsp;·&nbsp; add ?training to the URL for a practice dummy</p>
+  <!-- ════════ AUTH ════════ -->
+  <section class="screen active" id="screen-auth">
+    <div class="auth-wrap">
+      <div class="logo">
+        <div class="logo-kicker">ENTER THE RIFT</div>
+        <h1 class="logo-title">RIFT<span>BRAWL</span></h1>
+        <div class="logo-tag">A 60HZ PLATFORM FIGHTER · 5 LEGENDS · 3 STOCKS · NO MERCY</div>
+      </div>
+      <form id="auth-form" class="card auth-card" autocomplete="off">
+        <div id="auth-tabs">
+          <button type="button" data-mode="login" class="active">SIGN IN</button>
+          <button type="button" data-mode="register">NEW FIGHTER</button>
+        </div>
+        <label>FIGHTER TAG
+          <input id="auth-username" maxlength="16" placeholder="e.g. SKYBREAKER" required />
+        </label>
+        <label>PASSWORD
+          <input id="auth-password" type="password" placeholder="••••••••" required />
+        </label>
+        <div id="auth-error"></div>
+        <button id="auth-submit" class="btn-primary" type="submit">ENTER THE ARENA</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ════════ MAIN MENU ════════ -->
+  <section class="screen" id="screen-menu">
+    <header class="topbar">
+      <div class="brand">RIFT<span>BRAWL</span></div>
+      <div class="top-right">
+        <span id="pad-indicator" title="Controller">🎮</span>
+        <button id="mute-btn" class="btn-icon" title="Sound">🔊</button>
+        <div class="user-chip">
+          <div>
+            <div id="user-tag">—</div>
+            <div id="user-record">0W — 0L</div>
+          </div>
+          <button id="btn-logout" class="btn-mini ghost" title="Sign out">⎋</button>
+        </div>
+      </div>
+    </header>
+
+    <div class="menu-body">
+      <div class="menu-main">
+        <h2 class="menu-heading">CHOOSE YOUR BATTLE</h2>
+        <button class="mode-btn" id="btn-quick">
+          <span class="mode-name">QUICK MATCH</span>
+          <span class="mode-desc">Find a rival online · ranked W/L</span>
+        </button>
+        <button class="mode-btn" id="btn-practice">
+          <span class="mode-name">VS CPU</span>
+          <span class="mode-desc">Sharpen your blade against the machine</span>
+        </button>
+        <button class="mode-btn subtle" id="btn-howto">
+          <span class="mode-name">HOW TO FIGHT</span>
+          <span class="mode-desc">Controls · mechanics · the sacred rules</span>
+        </button>
+      </div>
+
+      <aside class="friends-panel card">
+        <h3>FIGHTERS</h3>
+        <form id="add-friend-form">
+          <input id="friend-input" maxlength="16" placeholder="Add by tag…" />
+          <button class="btn-mini" type="submit">＋</button>
+        </form>
+        <div id="requests-block" style="display:none">
+          <h4>REQUESTS</h4>
+          <div id="requests-list"></div>
+        </div>
+        <div id="friends-list" class="friends-list"></div>
+      </aside>
     </div>
 
-    <div id="hud" style="display: none;"></div>
+    <div id="queue-overlay">
+      <div class="queue-box card">
+        <div class="spinner"></div>
+        <div class="queue-text">SEARCHING FOR A RIVAL…</div>
+        <button id="btn-cancel-queue" class="btn-ghost" data-back>CANCEL</button>
+      </div>
+    </div>
+  </section>
 
-    <script type="module" src="index.js"></script>
-  </body>
+  <!-- ════════ CHARACTER SELECT ════════ -->
+  <section class="screen" id="screen-select">
+    <header class="topbar slim">
+      <div class="brand sm">CHOOSE YOUR LEGEND</div>
+      <button id="btn-leave-select" class="btn-ghost" data-back>LEAVE</button>
+    </header>
+    <div class="select-body">
+      <div id="select-grid"></div>
+      <div class="select-footer">
+        <div id="select-desc" class="select-desc"></div>
+        <div class="select-right">
+          <div id="select-opp" class="opp-box"></div>
+          <button id="btn-ready" class="btn-primary big">READY</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ GAME ════════ -->
+  <section class="screen" id="screen-game">
+    <canvas id="game-canvas"></canvas>
+  </section>
+
+  <!-- ════════ RESULTS ════════ -->
+  <section class="screen" id="screen-results">
+    <div class="results-wrap">
+      <h1 id="results-title" class="win">VICTORY</h1>
+      <div id="results-sub"></div>
+      <div id="results-stats" class="card"></div>
+      <div class="results-actions">
+        <button id="btn-rematch" class="btn-primary big">REMATCH</button>
+        <button id="btn-results-leave" class="btn-ghost" data-back>BACK TO MENU</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- modals & toasts -->
+  <div class="modal" id="invite-modal">
+    <div class="modal-box card">
+      <h3>⚔ CHALLENGE</h3>
+      <p id="invite-text"></p>
+      <div class="modal-actions">
+        <button id="btn-invite-accept" class="btn-primary">ACCEPT</button>
+        <button id="btn-invite-decline" class="btn-ghost" data-back>DECLINE</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="howto-modal">
+    <div class="modal-box card wide">
+      <h3>HOW TO FIGHT</h3>
+      <div class="howto-grid">
+        <div>
+          <h4>⌨ KEYBOARD</h4>
+          <ul>
+            <li><b>A / D</b> or <b>← →</b> — move</li>
+            <li><b>Space</b> — jump (tap again mid-air = double jump)</li>
+            <li><b>J</b> — attack &nbsp;·&nbsp; <b>K</b> — special</li>
+            <li><b>Shift</b> — shield</li>
+            <li><b>S / ↓</b> while falling — fast-fall</li>
+          </ul>
+        </div>
+        <div>
+          <h4>🎮 CONTROLLER</h4>
+          <ul>
+            <li><b>Stick / D-pad</b> — move (smash it sideways to dash)</li>
+            <li><b>A</b> — attack &nbsp;·&nbsp; <b>B</b> — special</li>
+            <li><b>X / Y</b> — jump</li>
+            <li><b>Bumpers / triggers</b> — shield</li>
+            <li><b>Start</b> — pause &nbsp;·&nbsp; navigate menus with the d-pad, <b>A</b> select, <b>B</b> back</li>
+          </ul>
+          <button id="btn-swap-ab" class="btn-ghost swap-ab" type="button">SWAP A/B: OFF</button>
+        </div>
+        <div>
+          <h4>📜 THE RULES</h4>
+          <ul>
+            <li>Direction + attack/special = different moves (up, down, side, neutral)</li>
+            <li>Damage builds <b>%</b> — the higher it climbs, the further you fly</li>
+            <li>Knock rivals past the blast zone to take a stock</li>
+            <li><b>3 stocks</b> each. Last legend standing wins.</li>
+            <li>Hold jump for full hops, tap for short hops. Up-special to recover!</li>
+            <li>Fall past the edge? Drift in to <b>grab the ledge</b> — brief invulnerability, then climb, jump, or attack up</li>
+            <li>Crouch (hold down) to <b>crouch-cancel</b> — you take less knockback</li>
+            <li><b>Esc / Start</b> pauses — resuming counts down 3·2·1 for both players</li>
+          </ul>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button id="btn-howto-close" class="btn-primary" data-back>GOT IT</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="confirm-modal">
+    <div class="modal-box card">
+      <h3 id="confirm-title">ARE YOU SURE?</h3>
+      <p id="confirm-text"></p>
+      <div class="modal-actions">
+        <button id="btn-confirm-yes" class="btn-danger">YES</button>
+        <button id="btn-confirm-no" class="btn-ghost" data-back>CANCEL</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="osk-modal">
+    <div class="modal-box card osk-box">
+      <div class="osk-head">
+        <span id="osk-label">TYPE</span>
+        <span id="osk-value" class="osk-value"></span>
+      </div>
+      <div id="osk-keys"></div>
+      <div class="osk-hint">🎮 d-pad move · A press · B backspace</div>
+    </div>
+  </div>
+
+  <div id="toasts"></div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
 </html>

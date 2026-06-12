@@ -116,38 +116,30 @@ clips carefully — and every character that shares a pack shares a skeleton-fee
 end-game once designs are locked. Don't start here; iterate on designs in A or B first.
 
 **Decision: Option B — KayKit Adventurers (CC0).** Assets live in
-`public/assets/kaykit/` (from the official GitHub mirror, license file included).
-`public/adventurers.html` is the living kit sheet, and the in-game `Player` loads
-the Knight via `GLTFLoader` + `AnimationMixer`, with idle/run/jump clips driven by
-the existing input code.
+`public/assets/kaykit/` (from the official GitHub mirror, license file included),
+and `public/adventurers.html` is the living kit sheet. The RIFTBRAWL engine on
+`main` currently renders its own stylized 2D fighters; the KayKit roster is the
+3D art direction, fully working in the showcase pages, ready to be ported onto
+the engine's fighters when wanted.
 
-## Combat (implemented)
+## Combat
 
-Movesets live in `public/characters.js` and run in `Player.js`:
-
-- **Knockback** is Smash-flavored: `(baseKb + targetDamage% * kbGrowth) / targetWeight`,
-  launched at the move's angle. Damage resets on KO (falling off and respawning).
-- **F = attack, G = special.** Melee moves have startup/active windows; bolts spawn
-  real projectiles owned by the attacker's client.
-- **Kit verbs**: Bastion holds G to block (no flinch; chip damage only; F mid-block =
-  Shield Bash). Korga's knockback grows with her own damage (rage) and Whirlwind
-  travels while hitting. Elara's two bolts trade speed for power. Whisper's hits from
-  behind do double (backstab) and Smoke Bomb makes him briefly intangible.
-- **Netplay**: each client simulates its own fighter and publishes position + clip +
-  damage; hits are relayed peer-to-peer through the server (`attackHit` → `hitReceived`),
-  with the receiver applying its own block/intangibility rules.
-- **Physics are delta-time scaled** — same game speed at any refresh rate.
+The engine on `main` (RIFTBRAWL) implements full Smash-style combat with a
+server-authoritative 60 Hz simulation. Per-character frame data lives in
+`shared/characters.js`: jab/tilts/aerials plus four specials each, with
+`knockback = base + damage% × growth` scaled by weight, shields, dodges, and
+ledge grabs. An earlier client-side combat prototype for the KayKit roster
+(F/G attacks, Bastion's block, Whisper's backstab, Korga's rage) lives in this
+branch's git history — mine it for kit ideas when expanding the engine roster.
 
 ## Running it
 
 ```
-node server.js
-  → http://localhost:3000              the game: character select, then fight
-  → http://localhost:3000/?training    same, plus a practice dummy that takes real hits
-  → http://localhost:3000/adventurers.html   roster & kit showcase
+npm start
+  → http://localhost:3000              RIFTBRAWL: auth, matchmaking, fights
+  → http://localhost:3000/adventurers.html   KayKit roster & kit showcase
   → http://localhost:3000/characters.html    earlier procedural prototypes
 ```
 
-In-game: `←→`/`AD` move · `Space` jump (×2) · `F` attack · `G` special (hold to
-block as Bastion). Showcase: `1`-`4` select · `R` run · `Space` jump · `F` attack ·
+Showcase controls: `1`-`4` select · `R` run · `Space` jump · `F` attack ·
 `G` special · `H` hit reaction · `K` KO (and get back up) · `X` idle.

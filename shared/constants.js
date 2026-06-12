@@ -1,0 +1,105 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// SMASH — shared constants (deterministic sim runs on server AND client)
+// Coordinate system: y is DOWN (canvas-aligned). Floor top surface at y = 0.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const TICK_RATE = 60;            // simulation Hz
+export const SNAP_EVERY = 2;            // server broadcasts every N ticks (30Hz)
+export const MS_PER_TICK = 1000 / TICK_RATE;
+
+export const STAGE = {
+  halfWidth: 560,                       // platform surface x ∈ [-560, 560]
+  floorY: 0,
+  thickness: 64,
+  blastX: 1500,
+  blastTop: -1300,
+  blastBottom: 920,
+  spawnX: [-340, 340, -130, 130],       // spawn slots by player index
+  respawnY: -420,                       // floating respawn platform height
+};
+
+export const STOCKS = 3;
+export const COUNTDOWN_TICKS = 190;     // 3.. 2.. 1.. GO!
+export const RESPAWN_FREEZE = 50;       // ticks dead before respawn
+export const RESPAWN_INVULN = 120;      // ticks of spawn invincibility
+export const RESPAWN_PLATFORM_TICKS = 90;
+
+// Input button bitmask
+export const BTN = {
+  ATTACK: 1,
+  SPECIAL: 2,
+  JUMP: 4,
+  SHIELD: 8,
+};
+
+// Player action states
+export const ACT = {
+  FREE: 0,          // idle / run / airborne, fully actionable
+  JUMPSQUAT: 1,
+  ATTACK: 2,        // committed to a move (grounded or aerial)
+  SHIELD: 3,
+  SHIELDSTUN: 4,
+  HITSTUN: 5,       // launched
+  SHIELDBREAK: 6,
+  DEAD: 7,          // waiting to respawn
+  RESPAWN: 8,       // standing on revival platform
+  LEDGE: 9,         // hanging from the stage edge
+};
+
+// Ledge mechanics
+export const LEDGE = {
+  invuln: 48,        // invincibility ticks on grab
+  maxHang: 300,      // auto-drop after this many ticks
+  regrabDelay: 32,   // ticks before the ledge can be grabbed again
+  grabW: 44,         // horizontal reach of the grab box beyond the edge
+  grabInner: 8,      // reach inside the edge
+  grabTop: -8,       // grab box vertical range (feet y)
+  grabBottom: 88,
+  hangX: 16,         // hang offset outward from the edge
+  hangY: 46,         // feet below stage top while hanging
+};
+
+export const DASH = {
+  ticks: 14,         // initial dash burst duration
+  mult: 1.4,         // dash speed multiplier over run speed
+  walkMult: 0.55,    // walk speed (partial stick tilt)
+  tapHi: 0.75,       // stick must reach this…
+  tapLo: 0.35,       // …from below this in one tick = smash input
+};
+
+export const CROUCH_KB = 0.82;  // crouch-cancel knockback multiplier
+
+// neutral-B charge: hold special to charge, release to fire (auto at max)
+export const NB_CHARGE = {
+  max: 66,        // ticks to full charge (~1.1s)
+  dmg: 1.3,       // +130% damage at full charge
+  speed: 0.45,    // +45% projectile speed
+  size: 0.8,      // +80% radius
+  kb: 0.7,        // +70% base knockback / growth
+};
+
+export const BODY_PUSH = {
+  range: 34,         // horizontal distance under which grounded bodies push
+  resolve: 0.5,      // fraction of the overlap resolved per tick
+  speed: 3.5,        // max push per tick (split between the two)
+};
+
+export const TEETER_SPEED = 2.4;  // walking slower than this stops at the edge
+
+export const SHIELD_MAX = 60;
+export const SHIELD_DRAIN = 0.22;       // per tick while held
+export const SHIELD_REGEN = 0.10;       // per tick while not shielding
+export const SHIELDBREAK_TICKS = 200;
+
+export const HURT_RADIUS = 36;          // hurtbox circle radius (scaled per char)
+
+export const PHASE = {
+  COUNTDOWN: 0,
+  PLAYING: 1,
+  OVER: 2,
+};
+
+// Quantize analog stick so client/server agree exactly
+export function quant(v) {
+  return Math.round(Math.max(-1, Math.min(1, v)) * 32) / 32;
+}
