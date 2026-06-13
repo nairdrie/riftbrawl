@@ -281,6 +281,65 @@ $('#btn-swap-ab').classList.toggle('on', getSwapAB());
 $('#btn-swap-ab').textContent = getSwapAB() ? 'SWAP A/B: ON' : 'SWAP A/B: OFF';
 $('#btn-howto-close').addEventListener('click', () => { sfx.click(); $('#howto-modal').classList.remove('open'); });
 
+// ── menu tabs (Play / Collection / Shop) ─────────────────────────────────────
+function setMenuTab(tab) {
+  $$('#menu-tabs .menu-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.menu-page').forEach(p => p.classList.toggle('active', p.dataset.tab === tab));
+  setPadFocus(null);
+}
+$$('#menu-tabs .menu-tab').forEach(b =>
+  b.addEventListener('click', () => { sfx.select(); setMenuTab(b.dataset.tab); }));
+
+// collection category filter pills (cosmetic-only for now)
+$$('#collection-filters .pill').forEach(p =>
+  p.addEventListener('click', () => {
+    sfx.click();
+    const cat = p.dataset.cat;
+    $$('#collection-filters .pill').forEach(x => x.classList.toggle('active', x === p));
+    $$('#tab-collection .collection-grid, #tab-collection .collection-empty')
+      .forEach(el => { el.hidden = el.dataset.cat !== cat; });
+  }));
+
+// placeholder buy buttons (shop) — no commerce wired yet
+$$('#tab-shop .btn-mini, #tab-shop .btn-primary').forEach(b =>
+  b.addEventListener('click', () => { sfx.click(); toast('🛒 Shop is coming soon'); }));
+
+// build the COLLECTION legend cards from the roster (static portraits)
+function buildCollection() {
+  const grid = $('#collection-legends');
+  if (!grid) return;
+  grid.innerHTML = '';
+  for (const id of CHARACTER_LIST) {
+    const c = CHARACTERS[id];
+    const card = document.createElement('div');
+    card.className = 'coll-card';
+    card.innerHTML = `
+      <canvas width="220" height="220"></canvas>
+      <div class="coll-badge">OWNED</div>
+      <div class="coll-info">
+        <div class="coll-name" style="--glow:${c.colors.glow}">${c.name}</div>
+        <div class="coll-title">${esc(c.title)}</div>
+      </div>
+      <div class="coll-rarity" style="--rar:${c.colors.accent}"></div>`;
+    grid.appendChild(card);
+    drawPortrait(card.querySelector('canvas'), id, 0, 0.8);
+  }
+  // a couple of locked "coming soon" slots to hint at the growing roster
+  for (let i = 0; i < 2; i++) {
+    const card = document.createElement('div');
+    card.className = 'coll-card locked';
+    card.innerHTML = `
+      <div class="coll-art">🔒</div>
+      <div class="coll-badge">LOCKED</div>
+      <div class="coll-info">
+        <div class="coll-name">? ? ?</div>
+        <div class="coll-title">New legend · coming soon</div>
+      </div>
+      <div class="coll-rarity" style="--rar:#39405e"></div>`;
+    grid.appendChild(card);
+  }
+}
+
 // ── sound settings popover (music + sfx volume, mute-all) ────────────────────
 const soundWrap = $('.sound-wrap');
 const soundPanel = $('#sound-panel');
@@ -829,6 +888,7 @@ function esc(s) {
 // ── boot ────────────────────────────────────────────────────────────────────
 
 buildSelectGrid();
+buildCollection();
 refreshSelectUI();
 menuBackground();
 show('screen-auth');
