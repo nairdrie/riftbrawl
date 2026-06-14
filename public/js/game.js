@@ -350,6 +350,13 @@ export class MatchClient {
         }
         sfx.whiff();
       }
+      // roll dodge out of shield
+      if (p.act === ACT.ROLL && q.act !== ACT.ROLL) {
+        this.renderer.dust(p.x, p.y);
+        sfx.dodge();
+        if (i === this.myIdx) rumble(0.18, 0.3, 70);
+      }
+
       // grab / pummel / throw
       if (p.act === ACT.GRAB && q.act !== ACT.GRAB) sfx.grab();
       if (p.act === ACT.GRABBED && q.act !== ACT.GRABBED) {

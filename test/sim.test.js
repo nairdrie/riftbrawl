@@ -2,7 +2,7 @@
 // body push. Pure sim — no server. Run: node test/sim.test.js
 
 import { createGameState, step } from '../shared/sim.js';
-import { ACT, BTN, STAGE, PHASE, LEDGE, NB_CHARGE, PASSIVE } from '../shared/constants.js';
+import { ACT, BTN, STAGE, PHASE, LEDGE, NB_CHARGE, PASSIVE, ROLL } from '../shared/constants.js';
 
 let failures = 0;
 function check(name, cond, info = '') {
@@ -484,6 +484,39 @@ function duel(charA, charB) {
   const charged = ftiltDamage(true);
   check('holding ATTACK charges a smash that hits much harder',
     tap > 0 && charged > tap * 1.5, `tap=${tap} charged=${charged.toFixed(1)}`);
+}
+
+// ── 25. roll dodge out of shield ─────────────────────────────────────────────
+{
+  const s = freshState();
+  const p = s.players[0];
+  p.x = 0; p.grounded = true;
+  const shield = { b: BTN.SHIELD, x: 0, y: 0 };
+  const rollRight = { b: BTN.SHIELD, x: 1, y: 0 };
+  step(s, [shield, idle]);
+  check('holding shield from neutral guards', p.act === ACT.SHIELD, `act=${p.act}`);
+  const x0 = p.x;
+  step(s, [rollRight, idle]);                 // flick the stick → roll
+  check('flicking the stick while shielding starts a roll', p.act === ACT.ROLL, `act=${p.act}`);
+
+  let invFrames = 0;
+  for (let i = 0; i < ROLL.ticks + 4 && p.act === ACT.ROLL; i++) {
+    step(s, [rollRight, idle]);
+    if (p.act === ACT.ROLL && p.invuln > 0) invFrames++;
+  }
+  check('roll grants intangibility frames', invFrames >= 8, `invFrames=${invFrames}`);
+  check('roll carries the fighter sideways', p.x > x0 + 60, `x ${x0} → ${p.x.toFixed(0)}`);
+  check('roll ends back in shield while it is held', p.act === ACT.SHIELD, `act=${p.act}`);
+
+  // a roll at the lip should stop on stage, not self-destruct off the edge
+  const s2 = freshState();
+  const e = s2.players[0];
+  e.x = STAGE.halfWidth - 40; e.grounded = true;
+  step(s2, [shield, idle]);
+  step(s2, [rollRight, idle]);
+  for (let i = 0; i < ROLL.ticks + 4; i++) step(s2, [rollRight, idle]);
+  check('rolling toward the ledge stops on the stage', e.grounded && Math.abs(e.x) < STAGE.halfWidth,
+    `x=${e.x.toFixed(0)} grounded=${e.grounded}`);
 }
 
 console.log(failures ? `\n${failures} failure(s)` : '\nALL PASS');
