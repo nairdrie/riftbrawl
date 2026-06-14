@@ -47,6 +47,16 @@ export const ACT = {
   LEDGE: 9,         // hanging from the stage edge
   GRAB: 10,         // reaching for / holding a grabbed opponent
   GRABBED: 11,      // being held by an opponent
+  ROLL: 12,         // shield roll dodge (left/right out of shield)
+};
+
+// Roll dodge — flick the stick left/right while shielding to roll that way
+// with a window of intangibility, Smash-style. Stops at the ledge.
+export const ROLL = {
+  ticks: 26,         // total roll duration
+  dist: 150,         // horizontal ground covered
+  invFrom: 4,        // intangible window start
+  invTo: 18,         // intangible window end
 };
 
 // Ledge mechanics

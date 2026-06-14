@@ -6,7 +6,7 @@
 // Convention: feet at (0,0), y negative = up, +x = facing direction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { ACT } from '/shared/constants.js';
+import { ACT, ROLL } from '/shared/constants.js';
 
 export const TAU = Math.PI * 2;
 
@@ -333,6 +333,14 @@ export function deriveAnim(p, char, t) {
       A.crouch = 0.1;
       A.guardStun = true;          // pained, struggling face
       break;
+    case ACT.ROLL: {
+      // a full somersault in the direction of travel (tumble is in the rig's
+      // facing-flipped frame, so multiply by facing to keep the spin world-true)
+      const k = clamp01((p.actFrame ?? 0) / ROLL.ticks);
+      A.tumble = (p.rollDir || 1) * p.facing * k * TAU;
+      A.crouch = 0.25;
+      break;
+    }
     case ACT.ATTACK:
       A.move = deriveMove(p, char);
       break;

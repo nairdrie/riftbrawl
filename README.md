@@ -57,7 +57,9 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
   direction to throw four ways (f/b/u/d), tap attack to pummel, or mash
   the stick to wriggle free — escapes get harder the higher your percent.
 - **Defense** — hold shield (it shrinks, breaks, and regenerates),
-  shield-stun, shield-break stun.
+  shield-stun, shield-break stun. Flick the stick left/right while shielding
+  to **roll** that way through danger — a quick dodge with intangibility
+  frames that stops at the ledge instead of rolling off.
 
 ### The legends
 
@@ -78,6 +80,7 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | Attack | J | A |
 | Special | K | B |
 | Shield | Shift | bumpers / triggers |
+| Roll | shield + ←/→ | shield + left stick L/R |
 | Grab | L | shield + A |
 | Fast-fall | S / ↓ while falling | stick down |
 | Crouch | hold S / ↓ on the ground | hold stick down |

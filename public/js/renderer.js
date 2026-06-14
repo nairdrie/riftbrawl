@@ -907,7 +907,12 @@ export class Renderer {
         ctx.translate(0, -p.y);
         const shAlpha = clamp(1 - distToFloor / 420, 0, 0.42);
         ctx.fillStyle = `rgba(0,0,0,${shAlpha})`;
-        ctx.beginPath(); ctx.ellipse(0, 2, 34 * char.scale * (1 - distToFloor / 900), 7, 0, 0, TAU); ctx.fill();
+        // clamp the radius to ≥0: a fighter launched high (distToFloor > 900)
+        // would otherwise pass a negative radius to ellipse(), which throws
+        // IndexSizeError and aborts the whole frame — taking the off-screen
+        // locators and HUD cards down with it.
+        const shadowW = 34 * char.scale * Math.max(0, 1 - distToFloor / 900);
+        ctx.beginPath(); ctx.ellipse(0, 2, shadowW, 7, 0, 0, TAU); ctx.fill();
         ctx.restore();
       }
       drawFighter(ctx, p, this.t);

@@ -9,7 +9,7 @@ import {
   RESPAWN_FREEZE, RESPAWN_INVULN, RESPAWN_PLATFORM_TICKS,
   SHIELD_MAX, SHIELD_DRAIN, SHIELD_REGEN, SHIELDBREAK_TICKS,
   LEDGE, DASH, CROUCH_KB, BODY_PUSH, TEETER_SPEED, NB_CHARGE, PASSIVE,
-  SMASH_CHARGE, GRAB, THROWS,
+  SMASH_CHARGE, GRAB, THROWS, ROLL,
 } from './constants.js';
 import { CHARACTERS } from './characters.js';
 
@@ -34,6 +34,7 @@ export function createPlayer(uid, charId, idx) {
     exhausted: false, fastFalling: false,
     prevB: 0, prevX: 0,
     dashTimer: 0, ledgeTimer: 0, regrabTimer: 0,
+    rollDir: 0,                     // shield-roll direction (+1 right / -1 left)
     charge: 0,
     stacks: 0,                      // volt: static charge
     burnTicks: 0, burnTimer: 0,     // ember: damage over time on the victim
@@ -653,8 +654,30 @@ function updatePlayer(p, inp, char, state, events) {
         events.push({ type: 'grabtry', x: p.x, y: p.y - 40, who: p.idx });
       } else if (pressed & BTN.JUMP) {
         p.act = ACT.JUMPSQUAT; p.actFrame = 0;
+      } else if (Math.abs(inp.x) > 0.5 && Math.abs(p.prevX) < 0.5) {
+        // flick the stick aside while shielding → roll dodge that way
+        p.act = ACT.ROLL; p.actFrame = 0;
+        p.rollDir = inp.x > 0 ? 1 : -1;
+        events.push({ type: 'roll', x: p.x, y: p.y - 40, who: p.idx, dir: p.rollDir });
       } else if (!(inp.b & BTN.SHIELD)) {
         p.act = ACT.FREE; p.actFrame = 0;
+      }
+      break;
+    }
+    case ACT.ROLL: {
+      p.actFrame++;
+      const f = p.actFrame;
+      // intangible through the middle of the roll
+      if (f >= ROLL.invFrom && f <= ROLL.invTo) p.invuln = Math.max(p.invuln, 1);
+      // slide along the ground with a smooth ease-in-out displacement profile
+      const ease = (u) => 0.5 - 0.5 * Math.cos(Math.min(1, u) * Math.PI);
+      const dxStep = ROLL.dist * (ease(f / ROLL.ticks) - ease((f - 1) / ROLL.ticks));
+      // never roll off the stage — stop at the lip like a Smash roll
+      p.x = Math.max(-STAGE.halfWidth + 6, Math.min(STAGE.halfWidth - 6, p.x + p.rollDir * dxStep));
+      p.vx = 0; p.vy = 0;
+      if (f >= ROLL.ticks) {
+        p.act = (inp.b & BTN.SHIELD) ? ACT.SHIELD : ACT.FREE;
+        p.actFrame = 0;
       }
       break;
     }
@@ -1174,7 +1197,7 @@ const P_FIELDS = [
   'x', 'y', 'vx', 'vy', 'facing', 'percent', 'stocks', 'jumpsLeft',
   'act', 'actFrame', 'hitMask', 'stun', 'hitlag', 'shield', 'invuln',
   'respawnTimer', 'platTimer', 'prevB', 'prevX', 'dashTimer',
-  'ledgeTimer', 'regrabTimer', 'charge',
+  'ledgeTimer', 'regrabTimer', 'rollDir', 'charge',
   'stacks', 'burnTicks', 'burnTimer', 'floatT', 'zx', 'zy',
   'grabbing', 'grabbedBy', 'grabTimer', 'grabMash', 'pummelCd',
 ];
