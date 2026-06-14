@@ -11,6 +11,16 @@ const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
+// Per-player identity colours (P1 / P2 …). Shared by the little on-stage
+// triangle marker and the off-screen locator bubble so you can always tell
+// who's who — even in a mirror match where both pick the same legend.
+export const PLAYER_COLORS = [
+  { main: '#3d9bff', glow: '#8ec4ff', label: 'P1' },  // blue
+  { main: '#ff4d5e', glow: '#ff97a0', label: 'P2' },  // red
+  { main: '#41e3a0', glow: '#8df0c6', label: 'P3' },  // green
+  { main: '#ffc14d', glow: '#ffda8c', label: 'P4' },  // gold
+];
+
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
@@ -34,6 +44,10 @@ export class Renderer {
     this.canvas.width = this.canvas.clientWidth * dpr;
     this.canvas.height = this.canvas.clientHeight * dpr;
     this.dpr = dpr;
+    // On short screens (landscape phones) and touch devices the big bottom
+    // player cards eat too much of the arena — switch to slim corner HUDs.
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+    this.compactHud = this.canvas.clientHeight < 560 || !!coarse;
   }
 
   makeStars() {
@@ -370,6 +384,7 @@ export class Renderer {
   }
 
   drawHUD(ctx, players, meta, myIdx) {
+    if (this.compactHud) return this.drawHUDCompact(ctx, players, meta);
     const w = this.canvas.width, h = this.canvas.height;
     const d = this.dpr;
     const n = players.length;
@@ -415,6 +430,18 @@ export class Renderer {
       ctx.lineWidth = 2.4 * d;
       ctx.beginPath(); ctx.arc(x + 46 * d, y0 + 46 * d, 34 * d, 0, TAU); ctx.stroke();
 
+      // P1 / P2 identity badge — same colour as this player's on-stage marker
+      // and off-screen locator bubble
+      const pcol = PLAYER_COLORS[i % PLAYER_COLORS.length];
+      const bx = x + 18 * d, byy = y0 + 18 * d;
+      ctx.fillStyle = pcol.main;
+      rr(ctx, bx - 14 * d, byy - 9 * d, 28 * d, 18 * d, 6 * d); ctx.fill();
+      ctx.fillStyle = '#0a0c18';
+      ctx.font = `800 ${11 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(pcol.label, bx, byy + 1 * d);
+      ctx.textBaseline = 'alphabetic';
+
       // name
       ctx.fillStyle = '#aeb9d8';
       ctx.font = `600 ${13 * d}px Rajdhani, system-ui, sans-serif`;
@@ -455,19 +482,129 @@ export class Renderer {
     }
   }
 
+  // Slim corner HUD for mobile / short screens: P1 top-left, P2 top-right.
+  // Portrait + identity colour + stocks + percent, no big bottom cards.
+  drawHUDCompact(ctx, players, meta) {
+    const w = this.canvas.width;
+    const d = this.dpr;
+    const cw = 156 * d, ch = 50 * d, mg = 10 * d;
+    ctx.textBaseline = 'alphabetic';
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const char = CHARACTERS[p.charId];
+      const pcol = PLAYER_COLORS[i % PLAYER_COLORS.length];
+      const flip = i === 1;                    // P2 mirrors into the right corner
+      const x = flip ? w - mg - cw : mg;
+      const y = mg;
+
+      // animated percent (shared accumulators with the full HUD)
+      if (this.hudPercent[i] === undefined) this.hudPercent[i] = p.percent;
+      if (p.percent > this.hudPercent[i] + 0.01) this.hudKick[i] = 1;
+      this.hudPercent[i] = lerp(this.hudPercent[i], p.percent, 0.25);
+      this.hudKick[i] = Math.max(0, (this.hudKick[i] || 0) - 0.06);
+
+      // glass panel
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      const pg = ctx.createLinearGradient(x, y, x, y + ch);
+      pg.addColorStop(0, '#10142cdd'); pg.addColorStop(1, '#0a0d1ddd');
+      ctx.fillStyle = pg;
+      rr(ctx, x, y, cw, ch, 12 * d); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2 * d;
+      ctx.strokeStyle = pcol.main + 'cc';
+      rr(ctx, x, y, cw, ch, 12 * d); ctx.stroke();
+
+      // portrait disc on the outer edge
+      const pr = 17 * d;
+      const pcx = flip ? x + cw - (8 * d + pr) : x + 8 * d + pr;
+      const pcy = y + ch / 2;
+      const pcv = this.portrait(p.charId);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.clip();
+      ctx.drawImage(pcv, pcx - pr - 2 * d, pcy - pr - 2 * d, (pr + 2 * d) * 2, (pr + 2 * d) * 2);
+      ctx.restore();
+      ctx.strokeStyle = pcol.main; ctx.lineWidth = 2 * d;
+      ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.stroke();
+
+      // text column (flows away from the portrait)
+      const tx = flip ? pcx - pr - 9 * d : pcx + pr + 9 * d;
+      const dir = flip ? -1 : 1;
+      ctx.textAlign = flip ? 'right' : 'left';
+
+      // identity label
+      ctx.fillStyle = pcol.main;
+      ctx.font = `800 ${11 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.fillText(pcol.label, tx, y + 16 * d);
+
+      // stocks as little dots trailing the label
+      for (let s = 0; s < 3; s++) {
+        const sx = tx + dir * (22 * d + s * 9 * d);
+        ctx.fillStyle = s < p.stocks ? pcol.main : '#2a3052';
+        ctx.beginPath(); ctx.arc(sx, y + 12.5 * d, 3 * d, 0, TAU); ctx.fill();
+      }
+
+      // big percent
+      const pc = Math.round(this.hudPercent[i]);
+      const kick = 1 + (this.hudKick[i] || 0) * 0.3;
+      ctx.save();
+      ctx.translate(tx, y + ch - 9 * d);
+      ctx.scale(kick, kick);
+      ctx.font = `800 ${25 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.fillStyle = this.percentColor(pc);
+      ctx.shadowColor = this.percentColor(pc);
+      ctx.shadowBlur = (this.hudKick[i] || 0) * 16 * d;
+      ctx.fillText(`${pc}%`, 0, 0);
+      ctx.restore();
+
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+  }
+
+  // little P1/P2 triangle hovering over a fighter's head so you can always
+  // tell the players apart. Colour-matched to the off-screen locator bubble.
+  drawPlayerMarker(ctx, p, idx) {
+    const pc = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+    const s = (CHARACTERS[p.charId]?.scale) || 1;
+    const bob = Math.sin(this.t * 3 + idx * 1.7) * 2;
+    ctx.save();
+    ctx.translate(p.x, p.y - 92 * s - 6 + bob);
+    // downward triangle pointing at the fighter
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(-6.5, -9); ctx.lineTo(6.5, -9); ctx.closePath();
+    ctx.lineWidth = 2.5; ctx.strokeStyle = '#0a0c18cc'; ctx.stroke();
+    ctx.shadowColor = pc.glow; ctx.shadowBlur = 8;
+    ctx.fillStyle = pc.main; ctx.fill();
+    ctx.shadowBlur = 0;
+    // P1 / P2 label above the triangle
+    ctx.font = '800 13px Rajdhani, system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3.5; ctx.strokeStyle = '#0a0c18cc';
+    ctx.strokeText(pc.label, 0, -13);
+    ctx.fillStyle = pc.main;
+    ctx.fillText(pc.label, 0, -13);
+    ctx.restore();
+  }
+
   // off-screen player indicator bubble (smash-style magnifier)
   drawOffscreenBubbles(ctx, players) {
     const w = this.canvas.width, h = this.canvas.height;
     const d = this.dpr;
-    for (const p of players) {
+    for (let idx = 0; idx < players.length; idx++) {
+      const p = players[idx];
       if (p.act === ACT.DEAD) continue;
       // world → screen
       const sx = (p.x - this.cam.x) * this.cam.zoom + w / 2;
       const sy = (p.y - 40 - this.cam.y) * this.cam.zoom + h / 2;
       if (sx > 0 && sx < w && sy > 0 && sy < h) continue;
-      const char = CHARACTERS[p.charId];
+      const pc = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+      // keep the bubble clear of the HUD (bottom cards normally, top corners
+      // in compact/mobile mode)
+      const topPad = this.compactHud ? 84 * d : 56 * d;
+      const botPad = this.compactHud ? 56 * d : 170 * d;
       const bx = clamp(sx, 56 * d, w - 56 * d);
-      const by = clamp(sy, 56 * d, h - 170 * d);
+      const by = clamp(sy, topPad, h - botPad);
       // how close to a blast zone (0..1)
       const danger = Math.max(
         Math.abs(p.x) / STAGE.blastX,
@@ -477,25 +614,35 @@ export class Renderer {
       const pulse = critical ? 0.5 + 0.5 * Math.abs(Math.sin(this.t * 9)) : 0;
       ctx.save();
       ctx.fillStyle = '#0d1126dd';
-      ctx.strokeStyle = critical ? `rgba(255, 70, 50, ${0.6 + pulse * 0.4})` : char.colors.glow;
+      // ring matches the player's identity colour (P1 blue / P2 red), flashing
+      // red once they're about to die
+      ctx.strokeStyle = critical ? `rgba(255, 70, 50, ${0.6 + pulse * 0.4})` : pc.main;
       ctx.lineWidth = (2.5 + pulse * 2.5) * d;
       const br = (34 + pulse * 4) * d;
+      ctx.shadowColor = pc.glow; ctx.shadowBlur = 8 * d;
       ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.beginPath(); ctx.arc(bx, by, br, 0, TAU); ctx.clip();
       const pcv = this.portrait(p.charId);
       ctx.drawImage(pcv, bx - 30 * d, by - 30 * d, 60 * d, 60 * d);
       ctx.restore();
+      // P1/P2 tag riding the top of the bubble
+      ctx.fillStyle = pc.main;
+      ctx.font = `800 ${12 * d}px Rajdhani, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 3 * d; ctx.strokeStyle = '#0a0c18cc';
+      ctx.strokeText(pc.label, bx, by - br - 6 * d);
+      ctx.fillText(pc.label, bx, by - br - 6 * d);
       // pct chip
       ctx.fillStyle = this.percentColor(p.percent);
       ctx.font = `800 ${15 * d}px Rajdhani, sans-serif`;
-      ctx.textAlign = 'center';
       ctx.fillText(`${Math.round(p.percent)}%`, bx, by + 52 * d);
       // arrow
       const ang = Math.atan2(sy - by, sx - bx);
       ctx.save();
       ctx.translate(bx + Math.cos(ang) * 42 * d, by + Math.sin(ang) * 42 * d);
       ctx.rotate(ang);
-      ctx.fillStyle = char.colors.accent;
+      ctx.fillStyle = pc.main;
       ctx.beginPath(); ctx.moveTo(8 * d, 0); ctx.lineTo(-5 * d, -6 * d); ctx.lineTo(-5 * d, 6 * d);
       ctx.closePath(); ctx.fill();
       ctx.restore();
@@ -744,7 +891,8 @@ export class Renderer {
     }
 
     // fighters (draw dead ones not at all)
-    for (const p of view.players) {
+    for (let i = 0; i < view.players.length; i++) {
+      const p = view.players[i];
       if (p.act === ACT.DEAD) continue;
       const char = CHARACTERS[p.charId];
       ctx.save();
@@ -764,6 +912,8 @@ export class Renderer {
       }
       drawFighter(ctx, p, this.t);
       ctx.restore();
+      // little P1/P2 triangle hovering over the head
+      this.drawPlayerMarker(ctx, p, i);
     }
 
     this.drawParticles(ctx);

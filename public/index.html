@@ -43,8 +43,20 @@
 
   <!-- ════════ MAIN MENU ════════ -->
   <section class="screen" id="screen-menu">
-    <header class="topbar menu-topbar">
-      <div class="top-right">
+    <header class="menu-bar">
+      <div class="menu-bar-left">
+        <div class="menu-brand">RIFT<span>BRAWL</span></div>
+        <nav class="menu-tabs" id="menu-tabs" role="tablist">
+          <button class="menu-tab active" data-tab="play"><span class="tab-ico">⚔</span>PLAY</button>
+          <button class="menu-tab" data-tab="collection"><span class="tab-ico">🛡</span>COLLECTION</button>
+          <button class="menu-tab" data-tab="shop"><span class="tab-ico">🛒</span>SHOP</button>
+        </nav>
+      </div>
+      <div class="menu-bar-right">
+        <div class="currency-chip" title="Currency (coming soon)">
+          <span class="cur cur-gold">🪙 1,250</span>
+          <span class="cur cur-gem">💎 40</span>
+        </div>
         <span id="pad-indicator" title="Controller">🎮</span>
         <div class="sound-wrap">
           <button id="mute-btn" class="btn-icon" title="Sound &amp; volume">🔊</button>
@@ -70,52 +82,170 @@
       </div>
     </header>
 
-    <div class="menu-logo">
-      <h1 class="menu-logo-title">RIFT<span>BRAWL</span></h1>
-      <div class="menu-logo-tag">A 60HZ PLATFORM FIGHTER</div>
-    </div>
+    <div class="menu-pages">
 
-    <div class="menu-body">
-      <div class="menu-main">
-        <h2 class="menu-heading">CHOOSE YOUR BATTLE</h2>
-        <button class="mode-btn" id="btn-quick">
-          <span class="mode-name">QUICK MATCH</span>
-          <span class="mode-desc">Find a rival online · casual W/L</span>
-        </button>
-        <button class="mode-btn ranked" id="btn-ranked">
-          <span class="soon-badge">COMING SOON</span>
-          <span class="mode-name">RANKED</span>
-          <span class="mode-desc">Climb the ladder · seasonal ranks · eternal glory</span>
-          <span class="rank-strip" aria-hidden="true">
-            <span class="rank-tier" style="--tc:#cd8a5e">BRONZE</span>
-            <span class="rank-tier" style="--tc:#c9d4e8">SILVER</span>
-            <span class="rank-tier" style="--tc:#ffe16b">GOLD</span>
-            <span class="rank-tier" style="--tc:#41d9ff">DIAMOND</span>
-            <span class="rank-tier" style="--tc:#8a5cff">RIFTLORD</span>
-          </span>
-        </button>
-        <button class="mode-btn" id="btn-practice">
-          <span class="mode-name">VS CPU</span>
-          <span class="mode-desc">Sharpen your blade against the machine</span>
-        </button>
-        <button class="mode-btn subtle" id="btn-howto">
-          <span class="mode-name">HOW TO FIGHT</span>
-          <span class="mode-desc">Controls · mechanics · the sacred rules</span>
-        </button>
+      <!-- ─── PLAY ─── -->
+      <div class="menu-page active" id="tab-play" data-tab="play">
+        <div class="play-grid">
+          <div class="menu-main">
+            <h2 class="page-heading">CHOOSE YOUR BATTLE</h2>
+            <button class="mode-btn" id="btn-quick">
+              <span class="mode-name">QUICK MATCH</span>
+              <span class="mode-desc">Find a rival online · casual W/L</span>
+            </button>
+            <button class="mode-btn ranked" id="btn-ranked">
+              <span class="soon-badge">COMING SOON</span>
+              <span class="mode-name">RANKED</span>
+              <span class="mode-desc">Climb the ladder · seasonal ranks · eternal glory</span>
+              <span class="rank-strip" aria-hidden="true">
+                <span class="rank-tier" style="--tc:#cd8a5e">BRONZE</span>
+                <span class="rank-tier" style="--tc:#c9d4e8">SILVER</span>
+                <span class="rank-tier" style="--tc:#ffe16b">GOLD</span>
+                <span class="rank-tier" style="--tc:#41d9ff">DIAMOND</span>
+                <span class="rank-tier" style="--tc:#8a5cff">RIFTLORD</span>
+              </span>
+            </button>
+            <button class="mode-btn" id="btn-practice">
+              <span class="mode-name">VS CPU</span>
+              <span class="mode-desc">Sharpen your blade against the machine</span>
+            </button>
+            <button class="mode-btn subtle" id="btn-howto">
+              <span class="mode-name">HOW TO FIGHT</span>
+              <span class="mode-desc">Controls · mechanics · the sacred rules</span>
+            </button>
+          </div>
+
+          <aside class="friends-panel card">
+            <h3>FIGHTERS</h3>
+            <form id="add-friend-form">
+              <input id="friend-input" maxlength="16" placeholder="Add by tag…" />
+              <button class="btn-mini" type="submit">＋</button>
+            </form>
+            <div id="requests-block" style="display:none">
+              <h4>REQUESTS</h4>
+              <div id="requests-list"></div>
+            </div>
+            <div id="friends-list" class="friends-list"></div>
+          </aside>
+        </div>
       </div>
 
-      <aside class="friends-panel card">
-        <h3>FIGHTERS</h3>
-        <form id="add-friend-form">
-          <input id="friend-input" maxlength="16" placeholder="Add by tag…" />
-          <button class="btn-mini" type="submit">＋</button>
-        </form>
-        <div id="requests-block" style="display:none">
-          <h4>REQUESTS</h4>
-          <div id="requests-list"></div>
+      <!-- ─── COLLECTION ─── -->
+      <div class="menu-page" id="tab-collection" data-tab="collection">
+        <div class="page-scroll">
+          <div class="page-head">
+            <div>
+              <h2 class="page-heading">COLLECTION</h2>
+              <p class="page-sub">Your legends and the cosmetics you've earned.</p>
+            </div>
+            <div class="collection-progress">
+              <span class="cp-count">5 / 5</span>
+              <span class="cp-label">LEGENDS</span>
+            </div>
+          </div>
+          <div class="filter-pills" id="collection-filters">
+            <button class="pill active" data-cat="legends">LEGENDS</button>
+            <button class="pill" data-cat="skins">SKINS</button>
+            <button class="pill" data-cat="emotes">EMOTES</button>
+            <button class="pill" data-cat="banners">BANNERS</button>
+          </div>
+          <div class="collection-grid" id="collection-legends" data-cat="legends"></div>
+          <div class="collection-empty" id="collection-skins" data-cat="skins" hidden>
+            <div class="empty-art">🎨</div>
+            <div class="empty-title">SKINS COMING SOON</div>
+            <p>Alternate looks for every legend will land here.</p>
+          </div>
+          <div class="collection-empty" id="collection-emotes" data-cat="emotes" hidden>
+            <div class="empty-art">💬</div>
+            <div class="empty-title">EMOTES COMING SOON</div>
+            <p>Taunt your rivals with style.</p>
+          </div>
+          <div class="collection-empty" id="collection-banners" data-cat="banners" hidden>
+            <div class="empty-art">🚩</div>
+            <div class="empty-title">BANNERS COMING SOON</div>
+            <p>Show your colours on the versus screen.</p>
+          </div>
         </div>
-        <div id="friends-list" class="friends-list"></div>
-      </aside>
+      </div>
+
+      <!-- ─── SHOP ─── -->
+      <div class="menu-page" id="tab-shop" data-tab="shop">
+        <div class="page-scroll">
+          <div class="page-head">
+            <div>
+              <h2 class="page-heading">SHOP</h2>
+              <p class="page-sub">Refresh daily · all cosmetic, never pay-to-win.</p>
+            </div>
+            <div class="shop-timer">⏳ Resets in <b>11:24:08</b></div>
+          </div>
+
+          <div class="shop-featured card">
+            <div class="sf-tag">FEATURED</div>
+            <div class="sf-body">
+              <h3 class="sf-title">RIFTLORD FOUNDER'S BUNDLE</h3>
+              <p class="sf-desc">Every launch legend · exclusive banner · 1,000 bonus shards.</p>
+              <div class="sf-buy">
+                <span class="price old">5,000</span>
+                <button class="btn-primary">🪙 2,999</button>
+              </div>
+            </div>
+          </div>
+
+          <h3 class="shop-section">DAILY DEALS</h3>
+          <div class="shop-grid">
+            <div class="shop-card">
+              <div class="sc-art" style="--c1:#41d9ff;--c2:#8a5cff"></div>
+              <div class="sc-name">FROST EMBER SKIN</div>
+              <div class="sc-meta">Skin · Ember</div>
+              <button class="btn-mini sc-buy">🪙 800</button>
+            </div>
+            <div class="shop-card">
+              <div class="sc-art" style="--c1:#ff5fd2;--c2:#ff5d3a"></div>
+              <div class="sc-name">VICTORY POSE</div>
+              <div class="sc-meta">Emote · Universal</div>
+              <button class="btn-mini sc-buy">🪙 350</button>
+            </div>
+            <div class="shop-card">
+              <div class="sc-art" style="--c1:#ffe16b;--c2:#ff9d3a"></div>
+              <div class="sc-name">GOLDEN AEGIS</div>
+              <div class="sc-meta">Skin · Aegis</div>
+              <button class="btn-mini sc-buy">💎 30</button>
+            </div>
+            <div class="shop-card">
+              <div class="sc-art" style="--c1:#56e39f;--c2:#41d9ff"></div>
+              <div class="sc-name">RIFT WALKER BANNER</div>
+              <div class="sc-meta">Banner · Profile</div>
+              <button class="btn-mini sc-buy">🪙 500</button>
+            </div>
+          </div>
+
+          <h3 class="shop-section">SHARDS &amp; GEMS</h3>
+          <div class="shop-grid bundles">
+            <div class="bundle-card">
+              <div class="bc-amt">🪙 1,200</div>
+              <div class="bc-bonus">+0 bonus</div>
+              <button class="btn-mini sc-buy">$0.99</button>
+            </div>
+            <div class="bundle-card best">
+              <div class="bc-flag">BEST VALUE</div>
+              <div class="bc-amt">🪙 7,000</div>
+              <div class="bc-bonus">+1,000 bonus</div>
+              <button class="btn-mini sc-buy">$4.99</button>
+            </div>
+            <div class="bundle-card">
+              <div class="bc-amt">💎 80</div>
+              <div class="bc-bonus">+0 bonus</div>
+              <button class="btn-mini sc-buy">$1.99</button>
+            </div>
+            <div class="bundle-card">
+              <div class="bc-amt">💎 500</div>
+              <div class="bc-bonus">+60 bonus</div>
+              <button class="btn-mini sc-buy">$9.99</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <div id="queue-overlay">
@@ -250,6 +380,19 @@
       <div class="mf-vs">vs <span id="mf-opp">opponent</span></div>
       <div class="mf-count" id="mf-count"></div>
       <div class="mf-sub">CHOOSE YOUR LEGEND</div>
+    </div>
+  </div>
+
+  <!-- rotate-device popup (touch devices in portrait; auto-dismisses on landscape) -->
+  <div class="modal" id="rotate-modal">
+    <div class="modal-box card">
+      <div class="rotate-icon">📱</div>
+      <h3>ROTATE YOUR DEVICE</h3>
+      <p>RIFTBRAWL is built for <b>landscape</b>. Turn your phone sideways for
+      the full arena view — this will dismiss itself once you do.</p>
+      <div class="modal-actions">
+        <button id="btn-rotate-continue" class="btn-ghost" data-back>CONTINUE ANYWAY</button>
+      </div>
     </div>
   </div>
 
