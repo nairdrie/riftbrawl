@@ -1030,3 +1030,93 @@ input:focus {
   .select-footer { flex-direction: column; align-items: stretch; }
   .howto-grid { grid-template-columns: 1fr; }
 }
+
+/* ── mobile / touch ──────────────────────────────────────────────────── */
+
+/* rotate-device recommendation — sits above every other modal */
+#rotate-modal { z-index: 80; }
+#rotate-modal .modal-box { align-items: center; text-align: center; }
+.rotate-icon {
+  font-size: 56px; line-height: 1;
+  transform-origin: 50% 50%;
+  animation: rotateHint 2.4s ease-in-out infinite;
+}
+@keyframes rotateHint {
+  0%, 35% { transform: rotate(0); }
+  55%, 100% { transform: rotate(-90deg); }
+}
+
+/* phones & narrow windows (portrait) */
+@media (max-width: 600px) {
+  .menu-bar { padding: 10px 14px; gap: 8px; }
+  .menu-bar-left { gap: 10px; width: 100%; justify-content: space-between; }
+  .menu-brand { font-size: 21px; }
+  .menu-tabs { gap: 2px; }
+  .currency-chip { padding: 6px 9px; }
+  .cur { font-size: 12px; }
+  .cur + .cur { padding-left: 8px; margin-left: 8px; }
+  .user-chip { padding: 6px 10px; }
+  #user-tag { font-size: 14px; }
+  .menu-bar-right { gap: 8px; }
+
+  .page-scroll, .play-grid { padding: 16px; }
+  .play-grid { gap: 16px; }
+  .friends-panel { max-height: 340px; }
+  .page-heading { font-size: 25px; }
+  .page-head { flex-wrap: wrap; }
+
+  .collection-grid { grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 12px; }
+  .shop-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  .sf-body { padding: 40px 20px 20px; }
+  .sf-title { font-size: 22px; }
+
+  .logo-title { font-size: clamp(48px, 16vw, 84px); }
+  .auth-card { width: min(400px, 94vw); padding: 22px; }
+
+  .modal-box { max-height: 88vh; overflow-y: auto; padding: 22px 24px; }
+  .howto-grid { grid-template-columns: 1fr; gap: 16px; }
+  .results-actions { flex-direction: column; width: 100%; }
+  .results-actions .btn-primary, .results-actions .btn-ghost { width: 100%; }
+  #screen-auth, #screen-results { overflow-y: auto; }
+}
+
+/* short viewports — landscape phones */
+@media (max-height: 540px) {
+  #screen-auth, #screen-results { overflow-y: auto; }
+  .auth-wrap { gap: 18px; padding: 16px; }
+  .logo-title { font-size: clamp(38px, 10vh, 60px); }
+  .logo-tag { margin-top: 6px; }
+
+  .menu-bar { padding: 8px 16px; }
+  .menu-brand { font-size: 20px; }
+  .menu-tab { padding: 7px 12px; font-size: 13px; }
+  .page-scroll { padding: 14px 20px 20px; }
+  .play-grid { padding: 14px 20px; }
+  .page-head { margin-bottom: 12px; }
+  .page-heading { font-size: 23px; }
+  .menu-main { gap: 10px; }
+  #screen-menu .mode-btn { padding: 11px 18px; }
+  .mode-name { font-size: 19px; }
+  .mode-btn.subtle .mode-name { font-size: 16px; }
+  .rank-strip { display: none; }
+  .friends-panel { padding: 14px; gap: 10px; }
+
+  .select-body { padding: 8px 18px 14px; gap: 12px; }
+  #select-grid { gap: 10px; }
+  .char-card { padding: 8px 8px 10px; }
+  .char-card canvas { aspect-ratio: 1.15; }
+  .cc-name { font-size: 16px; margin-top: 6px; }
+  .cc-title { margin-bottom: 4px; }
+  .cc-stats { display: none; }
+  .select-footer { gap: 12px; }
+  .btn-primary.big { font-size: 16px; padding: 11px 26px; }
+
+  .results-wrap { gap: 12px; padding: 14px; }
+  #results-title { font-size: clamp(40px, 9vw, 66px); }
+  #results-stats { padding: 12px 20px; }
+
+  .pause-box { padding: 22px 32px; gap: 12px; }
+  .pause-title { font-size: 42px; }
+  .modal-box { max-height: 92vh; overflow-y: auto; padding: 18px 22px; gap: 10px; }
+  .rotate-icon { font-size: 44px; }
+}

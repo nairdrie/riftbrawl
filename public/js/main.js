@@ -394,6 +394,24 @@ function maybeShowPadRecommend() {
   if (!padConnected()) $('#pad-recommend-modal').classList.add('open');
 }
 
+// ── rotate-device recommendation (touch devices prefer landscape) ────────────
+const isTouchDevice = window.matchMedia?.('(pointer: coarse)').matches;
+let rotateDismissed = false;
+function isPortrait() { return window.matchMedia?.('(orientation: portrait)').matches; }
+function syncRotateModal() {
+  if (!isPortrait()) rotateDismissed = false;   // reset once they turn the phone
+  const show = isTouchDevice && isPortrait() && !rotateDismissed;
+  $('#rotate-modal').classList.toggle('open', show);
+}
+$('#btn-rotate-continue').addEventListener('click', () => {
+  sfx.click();
+  rotateDismissed = true;
+  $('#rotate-modal').classList.remove('open');
+});
+window.matchMedia?.('(orientation: portrait)').addEventListener?.('change', syncRotateModal);
+window.addEventListener('orientationchange', () => setTimeout(syncRotateModal, 120));
+window.addEventListener('resize', syncRotateModal);
+
 // ── character select ────────────────────────────────────────────────────────
 
 const cardCanvases = new Map();
@@ -892,5 +910,6 @@ buildCollection();
 refreshSelectUI();
 menuBackground();
 show('screen-auth');
+syncRotateModal();
 maybeShowPadRecommend();
 net.connect();

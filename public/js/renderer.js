@@ -44,6 +44,10 @@ export class Renderer {
     this.canvas.width = this.canvas.clientWidth * dpr;
     this.canvas.height = this.canvas.clientHeight * dpr;
     this.dpr = dpr;
+    // On short screens (landscape phones) and touch devices the big bottom
+    // player cards eat too much of the arena — switch to slim corner HUDs.
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+    this.compactHud = this.canvas.clientHeight < 560 || !!coarse;
   }
 
   makeStars() {
@@ -380,6 +384,7 @@ export class Renderer {
   }
 
   drawHUD(ctx, players, meta, myIdx) {
+    if (this.compactHud) return this.drawHUDCompact(ctx, players, meta);
     const w = this.canvas.width, h = this.canvas.height;
     const d = this.dpr;
     const n = players.length;
@@ -477,6 +482,86 @@ export class Renderer {
     }
   }
 
+  // Slim corner HUD for mobile / short screens: P1 top-left, P2 top-right.
+  // Portrait + identity colour + stocks + percent, no big bottom cards.
+  drawHUDCompact(ctx, players, meta) {
+    const w = this.canvas.width;
+    const d = this.dpr;
+    const cw = 156 * d, ch = 50 * d, mg = 10 * d;
+    ctx.textBaseline = 'alphabetic';
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      const char = CHARACTERS[p.charId];
+      const pcol = PLAYER_COLORS[i % PLAYER_COLORS.length];
+      const flip = i === 1;                    // P2 mirrors into the right corner
+      const x = flip ? w - mg - cw : mg;
+      const y = mg;
+
+      // animated percent (shared accumulators with the full HUD)
+      if (this.hudPercent[i] === undefined) this.hudPercent[i] = p.percent;
+      if (p.percent > this.hudPercent[i] + 0.01) this.hudKick[i] = 1;
+      this.hudPercent[i] = lerp(this.hudPercent[i], p.percent, 0.25);
+      this.hudKick[i] = Math.max(0, (this.hudKick[i] || 0) - 0.06);
+
+      // glass panel
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      const pg = ctx.createLinearGradient(x, y, x, y + ch);
+      pg.addColorStop(0, '#10142cdd'); pg.addColorStop(1, '#0a0d1ddd');
+      ctx.fillStyle = pg;
+      rr(ctx, x, y, cw, ch, 12 * d); ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2 * d;
+      ctx.strokeStyle = pcol.main + 'cc';
+      rr(ctx, x, y, cw, ch, 12 * d); ctx.stroke();
+
+      // portrait disc on the outer edge
+      const pr = 17 * d;
+      const pcx = flip ? x + cw - (8 * d + pr) : x + 8 * d + pr;
+      const pcy = y + ch / 2;
+      const pcv = this.portrait(p.charId);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.clip();
+      ctx.drawImage(pcv, pcx - pr - 2 * d, pcy - pr - 2 * d, (pr + 2 * d) * 2, (pr + 2 * d) * 2);
+      ctx.restore();
+      ctx.strokeStyle = pcol.main; ctx.lineWidth = 2 * d;
+      ctx.beginPath(); ctx.arc(pcx, pcy, pr, 0, TAU); ctx.stroke();
+
+      // text column (flows away from the portrait)
+      const tx = flip ? pcx - pr - 9 * d : pcx + pr + 9 * d;
+      const dir = flip ? -1 : 1;
+      ctx.textAlign = flip ? 'right' : 'left';
+
+      // identity label
+      ctx.fillStyle = pcol.main;
+      ctx.font = `800 ${11 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.fillText(pcol.label, tx, y + 16 * d);
+
+      // stocks as little dots trailing the label
+      for (let s = 0; s < 3; s++) {
+        const sx = tx + dir * (22 * d + s * 9 * d);
+        ctx.fillStyle = s < p.stocks ? pcol.main : '#2a3052';
+        ctx.beginPath(); ctx.arc(sx, y + 12.5 * d, 3 * d, 0, TAU); ctx.fill();
+      }
+
+      // big percent
+      const pc = Math.round(this.hudPercent[i]);
+      const kick = 1 + (this.hudKick[i] || 0) * 0.3;
+      ctx.save();
+      ctx.translate(tx, y + ch - 9 * d);
+      ctx.scale(kick, kick);
+      ctx.font = `800 ${25 * d}px Rajdhani, system-ui, sans-serif`;
+      ctx.fillStyle = this.percentColor(pc);
+      ctx.shadowColor = this.percentColor(pc);
+      ctx.shadowBlur = (this.hudKick[i] || 0) * 16 * d;
+      ctx.fillText(`${pc}%`, 0, 0);
+      ctx.restore();
+
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+  }
+
   // little P1/P2 triangle hovering over a fighter's head so you can always
   // tell the players apart. Colour-matched to the off-screen locator bubble.
   drawPlayerMarker(ctx, p, idx) {
@@ -514,8 +599,12 @@ export class Renderer {
       const sy = (p.y - 40 - this.cam.y) * this.cam.zoom + h / 2;
       if (sx > 0 && sx < w && sy > 0 && sy < h) continue;
       const pc = PLAYER_COLORS[idx % PLAYER_COLORS.length];
+      // keep the bubble clear of the HUD (bottom cards normally, top corners
+      // in compact/mobile mode)
+      const topPad = this.compactHud ? 84 * d : 56 * d;
+      const botPad = this.compactHud ? 56 * d : 170 * d;
       const bx = clamp(sx, 56 * d, w - 56 * d);
-      const by = clamp(sy, 56 * d, h - 170 * d);
+      const by = clamp(sy, topPad, h - botPad);
       // how close to a blast zone (0..1)
       const danger = Math.max(
         Math.abs(p.x) / STAGE.blastX,
