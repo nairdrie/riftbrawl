@@ -1046,7 +1046,7 @@ export function step(state, inputs) {
             x: pr.x, y: STAGE.floorY - 6, vx: 0, vy: 0, grav: 0,
             r: pr.r * (0.55 + grow * 0.5), dmg: pr.dmg * grow, angle: 86,
             bkb: pr.bkb * grow, kbg: pr.kbg * grow,
-            life: 14, cd: 0, slot: Math.round(d01 * 10), aux: 0,
+            life: 14, cd: 0, slot: Math.round(d01 * 10), aux: pr.id,  // aux → carrier id
           });
           events.push({ type: 'quakestep', x: pr.x, y: STAGE.floorY, charId: pr.charId, power: d01 });
           pr.slot = 6;                       // ticks between bangs
@@ -1077,6 +1077,13 @@ export function step(state, inputs) {
 
     // ── player interaction (the quake carrier itself never hits — its shocks do) ──
     if (!dead && kind !== 'quake') {
+      // A quake erupts a fresh shock every few ticks along its path; without
+      // this they'd all rake the same target. The shocks share one "already
+      // hit" bitmask on their carrier (cd) so a single wave strikes each
+      // opponent only once.
+      const quakeCarrier = kind === 'shock'
+        ? state.projectiles.find(q => q.kind === 'quake' && q.id === pr.aux)
+        : null;
       for (const tgt of state.players) {
         if (tgt.idx === pr.owner) continue;
         if (tgt.invuln > 0 || tgt.act === ACT.DEAD || tgt.act === ACT.RESPAWN ||
@@ -1125,6 +1132,11 @@ export function step(state, inputs) {
           events.push({ type: 'erupt', x: pr.x, y: pr.y, charId: pr.charId });
           dead = true;
           break;
+        }
+        if (quakeCarrier) {
+          const bit = 1 << tgt.idx;
+          if (quakeCarrier.cd & bit) continue;   // this wave already hit them
+          quakeCarrier.cd |= bit;
         }
         if (tgt.act === ACT.SHIELD && tgt.grounded) applyShieldHit(tgt, pr, dirX, events);
         else applyHit(tgt, tChar, pr, dirX, events, state, owner, oChar);
