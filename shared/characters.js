@@ -10,8 +10,10 @@
 //   bkb/kbg : base knockback / knockback growth
 // ─────────────────────────────────────────────────────────────────────────────
 
-function hb(from, to, dx, dy, r, dmg, angle, bkb, kbg) {
-  return { from, to, dx, dy, r, dmg, angle, bkb, kbg };
+function hb(from, to, dx, dy, r, dmg, angle, bkb, kbg, hl) {
+  const box = { from, to, dx, dy, r, dmg, angle, bkb, kbg };
+  if (hl) box.hl = hl;     // optional hit-stop (freeze-frame) multiplier — heavy hits
+  return box;
 }
 
 export const CHARACTERS = {
@@ -28,18 +30,20 @@ export const CHARACTERS = {
     colors: { primary: '#5b7fa6', secondary: '#2c3e58', accent: '#ffc857', glow: '#7fb2ff', trail: '#9cc4ff' },
     ui: { power: 10, speed: 3, recovery: 4, weightStat: 10 },
     moves: {
+      // hl = hit-stop multiplier: Aegis's heavy blows land with extra freeze so
+      // every connect feels like it weighs a ton (pure feel; no kb/dmg change).
       jab:   { name: 'Gauntlet Strike', total: 26, hitboxes: [hb(7, 11, 52, -8, 30, 4.5, 70, 4.0, 3.0)] },
       ftilt: { name: 'Wardbreaker',     total: 38, armor: { from: 10, to: 20, thresh: 7 },
-               hitboxes: [hb(13, 18, 64, -12, 38, 13, 32, 7.5, 15.5)] },
+               hitboxes: [hb(13, 18, 64, -12, 38, 13, 32, 7.5, 15.5, 1.5)] },
       utilt: { name: 'Skysplitter',     total: 40, armor: { from: 9, to: 21, thresh: 7 },
-               hitboxes: [hb(12, 19, 8, -78, 42, 12, 88, 7.0, 14.5)] },
+               hitboxes: [hb(12, 19, 8, -78, 42, 12, 88, 7.0, 14.5, 1.45)] },
       dtilt: { name: 'Quake Sweep',     total: 36, armor: { from: 9, to: 19, thresh: 7 },
-               hitboxes: [hb(12, 17, 58, 26, 36, 10, 30, 6.5, 12.0)] },
-      nair:  { name: 'Iron Orbit',      total: 38, hitboxes: [hb(8, 24, 0, 0, 56, 11, 45, 6.0, 10.5)] },
-      fair:  { name: 'Citadel Cleave',  total: 42, hitboxes: [hb(16, 21, 60, -6, 44, 15, 38, 8.0, 16.0)] },
-      bair:  { name: 'Rampart Kick',    total: 36, hitboxes: [hb(12, 17, -58, -4, 40, 14, 33, 8.0, 15.0)] },
-      uair:  { name: 'Halo Crusher',    total: 36, hitboxes: [hb(11, 17, 4, -64, 44, 12, 86, 7.0, 14.0)] },
-      dair:  { name: 'Meteor Greave',   total: 44, hitboxes: [hb(17, 23, 0, 60, 40, 14, -78, 7.5, 13.5)] },
+               hitboxes: [hb(12, 17, 58, 26, 36, 10, 30, 6.5, 12.0, 1.4)] },
+      nair:  { name: 'Iron Orbit',      total: 38, hitboxes: [hb(8, 24, 0, 0, 56, 11, 45, 6.0, 10.5, 1.3)] },
+      fair:  { name: 'Citadel Cleave',  total: 42, hitboxes: [hb(16, 21, 60, -6, 44, 15, 38, 8.0, 16.0, 1.6)] },
+      bair:  { name: 'Rampart Kick',    total: 36, hitboxes: [hb(12, 17, -58, -4, 40, 14, 33, 8.0, 15.0, 1.5)] },
+      uair:  { name: 'Halo Crusher',    total: 36, hitboxes: [hb(11, 17, 4, -64, 44, 12, 86, 7.0, 14.0, 1.4)] },
+      dair:  { name: 'Meteor Greave',   total: 44, hitboxes: [hb(17, 23, 0, 60, 40, 14, -78, 7.5, 13.5, 1.6)] },
     },
     specials: {
       // ground-crawling shockwave — hugs the floor, dies at the edge
@@ -47,13 +51,13 @@ export const CHARACTERS = {
             speed: 7.5, r: 26, dmg: 11, angle: 80, bkb: 6.5, kbg: 10, life: 999 },
       // armored shoulder rush — weak hits don't stop him
       sb: { name: 'Bulwark Charge', type: 'dash', total: 46, from: 12, to: 30,
-            armor: { from: 12, to: 30, thresh: 8 },
+            armor: { from: 12, to: 30, thresh: 8 }, hl: 1.5,
             speed: 11, dx: 34, dy: -4, r: 44, dmg: 13, angle: 36, bkb: 8, kbg: 13 },
-      ub: { name: 'Ascendant Pillar', type: 'recovery', total: 56, from: 8, to: 26,
+      ub: { name: 'Ascendant Pillar', type: 'recovery', total: 56, from: 8, to: 26, hl: 1.3,
             vy: -17.5, drift: 2.6, dx: 0, dy: -30, r: 46, dmg: 12, angle: 84, bkb: 7.5, kbg: 11 },
       // counter stance — block a hit during the window, return it harder
       db: { name: 'Verdict Counter', type: 'counter', total: 52, from: 6, to: 32,
-            mult: 1.3, minDmg: 8, angle: 42, bkb: 8, kbg: 13 },
+            mult: 1.3, minDmg: 8, angle: 42, bkb: 8, kbg: 13, hl: 1.6 },
     },
   },
 

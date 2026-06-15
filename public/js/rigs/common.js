@@ -136,6 +136,142 @@ export function limbIK(ctx, x0, y0, x1, y1, l1, l2, dir, w, color, inkColor) {
   return [jx, jy];
 }
 
+// ── volumetric armor toolkit (forged, rim-lit plate — the "less stick" kit) ──
+// Convention here matches the rigs: +x faces forward, y-down. Most helpers take
+// a derived `C` palette and shade their own highlight / shadow tones from it.
+
+// Two-bone IK *solver* — same math as limbIK but returns the joints instead of
+// drawing, so a rig can build a limb out of layered plates around the bones.
+export function ikSolve(x0, y0, x1, y1, l1, l2, dir) {
+  let dx = x1 - x0, dy = y1 - y0;
+  let d = Math.hypot(dx, dy) || 0.0001;
+  const maxD = (l1 + l2) * 0.999;
+  if (d > maxD) { dx *= maxD / d; dy *= maxD / d; x1 = x0 + dx; y1 = y0 + dy; d = maxD; }
+  const minD = Math.abs(l1 - l2) * 1.001 + 0.01;
+  if (d < minD) { const f = minD / d; dx *= f; dy *= f; x1 = x0 + dx; y1 = y0 + dy; d = minD; }
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+  const h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const ux = dx / d, uy = dy / d;
+  const jx = x0 + a * ux - dir * h * uy;
+  const jy = y0 + a * uy + dir * h * ux;
+  return { jx, jy, ex: x1, ey: y1 };
+}
+
+// A forged armor SEGMENT between two joints: a rounded structural "bone" of dark
+// under-plate, faced with a brighter beveled plate that is rim-lit on one edge
+// and cel-shadowed on the other. This single primitive is what turns a stick
+// limb into a piece of armor. `light` (+1/-1) picks the lit edge.
+export function platedSeg(ctx, ax, ay, bx, by, w, C, opts = {}) {
+  const fill = opts.fill ?? C.primary;
+  const under = opts.under ?? shade(fill, 0.66);
+  const dark = opts.shadow ?? shade(fill, 0.82);
+  const lit = opts.lit ?? shade(fill, 1.16);      // sheen toward the light
+  const rim = opts.rim ?? shade(fill, 1.58);
+  const light = opts.light ?? -1;
+  const dx = bx - ax, dy = by - ay, d = Math.hypot(dx, dy) || 1e-4;
+  const nx = (-dy / d) * light, ny = (dx / d) * light;
+  // 1) structural capsule — only a thin sliver shows at the joints/flank
+  stroke2(ctx, c => { c.moveTo(ax, ay); c.lineTo(bx, by); }, w, under, C.ink);
+  // 2) cel-shadow sliver down the unlit flank
+  stroke2(ctx, c => {
+    c.moveTo(ax - nx * w * 0.28, ay - ny * w * 0.28);
+    c.lineTo(bx - nx * w * 0.28, by - ny * w * 0.28);
+  }, w * 0.5, dark, null);
+  // 3) bright plate face — the dominant read, nudged toward the light
+  stroke2(ctx, c => {
+    c.moveTo(lerp(ax, bx, 0.06) + nx * w * 0.1, lerp(ay, by, 0.06) + ny * w * 0.1);
+    c.lineTo(lerp(ax, bx, 0.94) + nx * w * 0.1, lerp(ay, by, 0.94) + ny * w * 0.1);
+  }, w * 0.82, fill, null);
+  // 4) sheen band + rim highlight on the lit edge
+  if (opts.rim !== null) {
+    stroke2(ctx, c => {
+      c.moveTo(lerp(ax, bx, 0.12) + nx * w * 0.26, lerp(ay, by, 0.12) + ny * w * 0.26);
+      c.lineTo(lerp(ax, bx, 0.9) + nx * w * 0.26, lerp(ay, by, 0.9) + ny * w * 0.26);
+    }, w * 0.28, lit, null);
+    ink(ctx, rim, Math.max(1.1, w * 0.13));
+    ctx.beginPath();
+    ctx.moveTo(lerp(ax, bx, 0.16) + nx * w * 0.36, lerp(ay, by, 0.16) + ny * w * 0.36);
+    ctx.lineTo(lerp(ax, bx, 0.86) + nx * w * 0.36, lerp(ay, by, 0.86) + ny * w * 0.36);
+    ctx.stroke();
+  }
+}
+
+// Chunky joint cap — knee poleyn / elbow couter / shoulder ball. Reads round and
+// solid: shaded underside, rim-lit crown.
+export function jointCap(ctx, x, y, r, C, opts = {}) {
+  const fill = opts.fill ?? C.primary;
+  disc(ctx, x, y, r, fill, C.ink, opts.lw ?? 2.3);
+  ctx.save();
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
+  ctx.beginPath(); ctx.arc(x, y + r * 0.5, r * 0.95, 0, TAU);
+  ctx.fillStyle = shade(fill, 0.74); ctx.fill();
+  ctx.restore();
+  ink(ctx, shade(fill, 1.42), Math.max(1, r * 0.2));
+  ctx.beginPath(); ctx.arc(x, y, r * 0.72, Math.PI * 1.12, Math.PI * 1.9); ctx.stroke();
+}
+
+// Heavy gauntleted fist gripping along `ang`. Wrist cuff + boxy hand + knuckle
+// ridges + rim, with an optional glowing accent stone on the back of the hand.
+export function gauntlet(ctx, x, y, r, ang, C, opts = {}) {
+  const fill = opts.fill ?? C.primary;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang);
+  // wrist cuff (behind)
+  roundRect(ctx, -r * 1.25, -r * 0.98, r * 0.85, r * 1.96, r * 0.34);
+  paint(ctx, shade(fill, 0.8), C.ink, 2.2);
+  // fist body
+  roundRect(ctx, -r * 0.55, -r * 1.02, r * 1.7, r * 2.04, r * 0.55);
+  paint(ctx, fill, C.ink, 2.4);
+  // shaded lower half
+  ctx.save();
+  roundRect(ctx, -r * 0.55, -r * 1.02, r * 1.7, r * 2.04, r * 0.55); ctx.clip();
+  roundRect(ctx, -r * 0.55, r * 0.12, r * 1.7, r * 1.3, r * 0.3);
+  paint(ctx, shade(fill, 0.74), null);
+  ctx.restore();
+  // knuckle ridges
+  ink(ctx, C.ink, 1.4);
+  for (let i = 0; i < 3; i++) {
+    const ky = -r * 0.6 + i * r * 0.6;
+    ctx.beginPath(); ctx.moveTo(r * 0.55, ky); ctx.lineTo(r * 1.12, ky); ctx.stroke();
+  }
+  // rim
+  ink(ctx, shade(fill, 1.42), 1.5);
+  ctx.beginPath(); ctx.moveTo(-r * 0.4, -r * 0.92); ctx.lineTo(r * 1.0, -r * 0.92); ctx.stroke();
+  if (opts.accent) { disc(ctx, r * 0.25, -r * 0.05, r * 0.34, opts.accent, C.ink, 1.6); }
+  ctx.restore();
+}
+
+// A short-lived shockwave of dust + ground cracks under a heavy grounded impact.
+// k 0..1 = strength; phase 0..1 drives the burst outward. Pure decoration.
+export function groundImpact(ctx, x, y, k, phase, C) {
+  if (k <= 0) return;
+  const a = easeOut(clamp01(phase));
+  ctx.save();
+  // radial ground crack
+  ink(ctx, C.ink, 2.2 * k);
+  ctx.globalAlpha *= (1 - a) * 0.9;
+  for (let i = -2; i <= 2; i++) {
+    const ang = i * 0.34;
+    const len = (18 + 26 * a) * k;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.sin(ang) * len, y + 3 + Math.cos(ang) * 4);
+    ctx.stroke();
+  }
+  // dust puffs kicking outward along the floor
+  ctx.globalAlpha = (1 - a) * 0.7;
+  glowOn(ctx, C.glow, 6);
+  for (let s = -1; s <= 1; s += 2) {
+    for (let i = 0; i < 3; i++) {
+      const px = x + s * (10 + a * (24 + i * 12)) * k;
+      const py = y - a * (6 + i * 5) * k - 1;
+      disc(ctx, px, py, (5 - i) * k * (0.6 + 0.5 * (1 - a)), shade(C.secondary, 1.5), null);
+    }
+  }
+  glowOff(ctx);
+  ctx.restore();
+}
+
 export function glowOn(ctx, color, blur) { ctx.shadowColor = color; ctx.shadowBlur = blur; }
 export function glowOff(ctx) { ctx.shadowBlur = 0; }
 
