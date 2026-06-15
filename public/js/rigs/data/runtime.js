@@ -85,7 +85,7 @@ function drawTorso(ctx, hipX, hipY, shY, C, spec) {
   } else if (shape === 'capsule') {
     stroke2(ctx, c => { c.moveTo(hipX, hipY); c.lineTo(0, shY); }, w * 2.0, fill, C.ink);
   } else { // spine
-    const topW = w * 0.85, botW = w * 0.5;
+    const topW = w * 0.66, botW = w * 0.46;
     poly(ctx, [[-topW, shY], [topW, shY], [hipX + botW, hipY + 1], [hipX - botW, hipY + 1]]);
     paint(ctx, fill, C.ink, 2.6);
     // a slim shaded back edge for a touch of volume
@@ -186,8 +186,15 @@ export function buildDataRig(spec) {
       const stepBob = A.grounded ? Math.abs(Math.sin(A.runPhase)) * 4.5 * A.runAmt : 0;
 
       const hipX = sway * 2.0;
+      // DEPTH: this is a side-view fighter, not a figure facing the camera, so
+      // the near/far limbs are separated mostly in depth, not screen width.
+      // `depth` scales the frontal hip/shoulder width (1 = full front-on, 0 =
+      // razor profile); ~0.55 reads as a confident 3/4 stance.
+      const depth = spec.depth ?? 0.55;
+      const hipW = (sk.hipW ?? 7) * depth;
+      const shoulderXd = (sk.shoulderX ?? 9) * depth;
       // idle sinks into an athletic guard: hips drop a touch so the knees bend
-      const idleSettle = idle ? (spec.idleSettle ?? 6) : 0;
+      const idleSettle = idle ? (spec.idleSettle ?? 3) : 0;
       const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
       const shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
       const headY = sk.headY + crouchDrop * 1.1 + idleSettle + breathY * 1.2 + stepBob;
@@ -253,15 +260,24 @@ export function buildDataRig(spec) {
         f1 = [stance + 8, 0]; f2 = [-stance - 4, 0];
       } else if (idle) {
         // side-on fighting stance: lead foot forward + flat, rear foot planted
-        // back with the heel a touch lifted; weight rocks with the idle sway
-        f1 = [stance + 7 - sway * 1.0, 0];
-        f2 = [-stance - 5 - sway * 2.0, -1.5];
+        // back with the heel a touch lifted; both knees bend FORWARD (sagittal
+        // plane) instead of toward each other; weight rocks with the idle sway
+        // compact, overlapping profile stance — a modest stagger (the near leg
+        // sits mostly in front of the far one), NOT a wide front-on A-frame
+        f1 = [stance * 0.5 + 2 - sway * 0.8, 0];      // lead foot — knee bends over it
+        f2 = [-stance * 0.7 - 3 - sway * 1.2, -1.5];  // rear foot — back, heel lifted
+        bend1 = -1; bend2 = -1;
       }
       if (A.crouch > 0.3) { f1[0] += 4; f2[0] -= 4; }
 
       // ── hand targets + wrist angle ───────────────────────────────────────────
-      const shF = [sk.shoulderX ?? 9, shY + 3], shB = [-(sk.shoulderX ?? 9), shY + 2];
+      // far shoulder rides a touch higher (foreshortening) for the 3/4 read
+      const farLift = (1 - depth) * 3.5;
+      const shF = [shoulderXd, shY + 3], shB = [-shoulderXd, shY + 2 - farLift];
       let hF, hB, wA = 0.9, twoHand = !!W.twoHand, hot = false, weaponOut = W.type !== 'none';
+      // elbow bend directions (pose-aware, not camera-facing constants): +1 drops
+      // the elbow down, -1 lifts it. Defaults suit the swings; idle overrides.
+      let armBendF = -1, armBendB = 1;
       const reach = 26;
 
       if (A.hang) {
@@ -309,27 +325,28 @@ export function buildDataRig(spec) {
                     : W.idle === 'down' ? { hF: [16, shY + 22 + bob], wA: 1.2 }
                     : { hF: [24, shY + 5 + bob], wA: -0.5 };          // 'rest' = guard
         hF = carry.hF; wA = carry.wA;
-        hB = [8, shY + 12 + bob * 0.6];                               // rear hand tucked
+        if (W.idle !== 'shoulder') armBendF = 1;                      // elbow drops into the guard
+        hB = [3, shY + 13 + bob * 0.6];                              // rear hand tucked to the body
         twoHand = !!W.idleTwoHand;
       }
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];
       if (!hB) hB = [-(sk.shoulderX ?? 9) * 1.5, shY + 12];          // resting counter-hand
 
       // ── draw order: back limbs → torso → head → front limbs + weapon → FX ────
-      const bl = drawLimb(ctx, hipX - (sk.hipW ?? 7), hipY, f2[0], f2[1] - 3,
+      const bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
                           sk.thigh, sk.shin, bend2, legW, backCol, C, spec, core);
       drawFoot(ctx, bl.ex, bl.ey, backCol, C, spec);
-      const ba = drawLimb(ctx, shB[0], shB[1], hB[0], hB[1], sk.upper, sk.fore, 1, armW, backCol, C, spec, core);
+      const ba = drawLimb(ctx, shB[0], shB[1], hB[0], hB[1], sk.upper, sk.fore, armBendB, armW, backCol, C, spec, core);
       drawHand(ctx, ba.ex, ba.ey, handR, backCol, C);
 
       drawTorso(ctx, hipX, hipY, shY, C, spec);
       drawHead(ctx, lean * 4, headY, C, A, spec);
 
-      const fl = drawLimb(ctx, hipX + (sk.hipW ?? 7), hipY, f1[0], f1[1] - 3,
+      const fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
                           sk.thigh, sk.shin, bend1, legW, limbCol, C, spec, core);
       drawFoot(ctx, fl.ex, fl.ey, limbCol, C, spec);
 
-      const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper, sk.fore, -1, armW, limbCol, C, spec, core);
+      const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper, sk.fore, armBendF, armW, limbCol, C, spec, core);
       if (weaponOut) {
         ctx.save();
         ctx.translate(fa.ex, fa.ey);
