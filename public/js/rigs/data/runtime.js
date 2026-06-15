@@ -117,7 +117,9 @@ function drawHead(ctx, hx, hy, C, A, spec) {
   ctx.fillStyle = shade(fill, 0.82); ctx.globalAlpha = 0.8; ctx.fill();
   ctx.restore();
   if (h.face !== false) {
-    face(ctx, hx, hy, r * (h.faceScale ?? 0.82), C, A, h.eyeColor ? { color: col(C, h.eyeColor) } : {});
+    // bias the face toward the front edge so the head reads as a profile look
+    const fopts = h.eyeColor ? { color: col(C, h.eyeColor) } : {};
+    face(ctx, hx + r * (h.faceShift ?? 0.18), hy, r * (h.faceScale ?? 0.82), C, A, fopts);
   }
 }
 
@@ -184,9 +186,11 @@ export function buildDataRig(spec) {
       const stepBob = A.grounded ? Math.abs(Math.sin(A.runPhase)) * 4.5 * A.runAmt : 0;
 
       const hipX = sway * 2.0;
-      const hipY = sk.hipY + crouchDrop + stepBob * 0.5;
-      const shY = sk.shoulderY + crouchDrop * 1.05 + breathY + stepBob;
-      const headY = sk.headY + crouchDrop * 1.1 + breathY * 1.2 + stepBob;
+      // idle sinks into an athletic guard: hips drop a touch so the knees bend
+      const idleSettle = idle ? (spec.idleSettle ?? 6) : 0;
+      const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
+      const shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
+      const headY = sk.headY + crouchDrop * 1.1 + idleSettle + breathY * 1.2 + stepBob;
       const headR = sk.headR;
 
       // lean (shoulders) + lunge (step-in), per state
@@ -248,7 +252,10 @@ export function buildDataRig(spec) {
       } else if (M && M.ph !== 'wind') {
         f1 = [stance + 8, 0]; f2 = [-stance - 4, 0];
       } else if (idle) {
-        f1 = [stance - sway * 1.5, 0]; f2 = [-stance - sway * 2.5, 0];
+        // side-on fighting stance: lead foot forward + flat, rear foot planted
+        // back with the heel a touch lifted; weight rocks with the idle sway
+        f1 = [stance + 7 - sway * 1.0, 0];
+        f2 = [-stance - 5 - sway * 2.0, -1.5];
       }
       if (A.crouch > 0.3) { f1[0] += 4; f2[0] -= 4; }
 
@@ -294,11 +301,15 @@ export function buildDataRig(spec) {
       } else if (A.runAmt > 0.05) {
         hF = [11, shY + 8]; hB = [-9 - Math.sin(A.runPhase) * 5 * A.runAmt, shY + 14]; wA = -2.35; twoHand = false;
       } else {
-        // idle: weapon carried low-ready in front; a slow breathing settle
-        const carry = W.idle === 'shoulder' ? { hF: [9, shY + 2], wA: -1.0 }
-                    : W.idle === 'down' ? { hF: [13, shY + 22], wA: 1.3 }
-                    : { hF: [14, shY + 15 + sway], wA: 0.5 };       // 'rest'
-        hF = carry.hF; wA = carry.wA; hB = [6, shY + 18 + sway * 0.6];
+        // idle: a side-on guard. lead hand up and out front with the blade
+        // angled forward (a heavily-folded arm throws the elbow out); the rear
+        // hand tucks to the ribs as a counterbalance, breathing with the sway.
+        const bob = sway * 0.8;
+        const carry = W.idle === 'shoulder' ? { hF: [5, shY - 3 + bob], wA: -1.2 }
+                    : W.idle === 'down' ? { hF: [16, shY + 22 + bob], wA: 1.2 }
+                    : { hF: [24, shY + 5 + bob], wA: -0.5 };          // 'rest' = guard
+        hF = carry.hF; wA = carry.wA;
+        hB = [8, shY + 12 + bob * 0.6];                               // rear hand tucked
         twoHand = !!W.idleTwoHand;
       }
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];
