@@ -3,31 +3,102 @@
 // helm, high-collared duelist jacket, flowing water-sash, shell-guard rapier.
 // Animation personality: elegant. True fencing stance (side profile, rear arm
 // curled), wave-like weight rocking at idle, dramatic full-extension lunges.
+// Built lean and tall — a poised swordsman, not a tank — but given real volume:
+// plated, rim-lit limbs that taper, gloved hands, and a shaded fin-crest helm.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
   TAU, lerp, clamp01, easeOut, palette, paint, ink, disc, roundRect, poly,
-  stroke2, limbIK, glowOn, glowOff, chain, chainLocal, ribbon,
-  swingTrail, chargeOrb, dizzyStars, face,
+  stroke2, ikSolve, platedSeg, jointCap, glowOn, glowOff, chain, chainLocal,
+  ribbon, swingTrail, chargeOrb, dizzyStars, face, shade,
 } from './common.js';
 
+// ── limb metrics (local units; feet at 0, +x forward, y up = negative) ───────
+const LEG_T = 21, LEG_S = 20;            // thigh / shin bone lengths (long, lean)
+const ARM_U = 15, ARM_F = 13;            // upper-arm / forearm bone lengths
+
+// The shell-guard rapier — a slim trident-tipped blade drawn along +x from the
+// gloved hand. Pale water-metal with a glowing core line.
 function rapier(ctx, C) {
-  // drawn along +x from the hand
   glowOn(ctx, C.glow, 8);
   // blade
-  stroke2(ctx, c => { c.moveTo(6, 0); c.lineTo(46, 0); }, 2.6, C.trail, C.ink, 2.6);
+  stroke2(ctx, c => { c.moveTo(6, 0); c.lineTo(46, 0); }, 2.8, C.trail, C.ink, 2.6);
   stroke2(ctx, c => { c.moveTo(8, -0.5); c.lineTo(44, -0.5); }, 1, '#ffffff', null, 0);
   // trident tip
   stroke2(ctx, c => {
     c.moveTo(40, -4.5); c.lineTo(49, 0); c.lineTo(40, 4.5);
   }, 2.4, C.trail, C.ink, 2.4);
   glowOff(ctx);
-  // shell guard
+  // shell guard — a scalloped fan with a rim
   ctx.beginPath();
-  ctx.arc(5, 0, 6, -Math.PI * 0.62, Math.PI * 0.62);
+  ctx.arc(5, 0, 6.4, -Math.PI * 0.62, Math.PI * 0.62);
   paint(ctx, C.primary, C.ink, 2.2);
-  // grip
-  stroke2(ctx, c => { c.moveTo(-3, 0); c.lineTo(4, 0); }, 4, C.secondary, C.ink, 2.6);
+  ink(ctx, shade(C.primary, 1.45), 1.4);
+  ctx.beginPath(); ctx.arc(5, 0, 4.4, -Math.PI * 0.5, Math.PI * 0.5); ctx.stroke();
+  // pommel + wrapped grip
+  stroke2(ctx, c => { c.moveTo(-4, 0); c.lineTo(4, 0); }, 4, C.secondary, C.ink, 2.6);
+  disc(ctx, -4.5, 0, 2.2, C.accent, C.ink, 1.4);
+}
+
+// a slim duelist sea-boot — pointed toe forward, turned-down accent cuff, sole
+function seaBoot(ctx, x, y, C, fill) {
+  ctx.save();
+  ctx.translate(x, y);
+  poly(ctx, [[-5, -9], [5, -9], [11, -2], [11, 2.6], [-6, 2.6], [-7, -3.5]]);
+  paint(ctx, fill, C.ink, 2.2);
+  // sole band
+  roundRect(ctx, -7, 0.4, 18, 3.4, 1.8); paint(ctx, shade(fill, 0.7), null);
+  // turned-down cuff
+  roundRect(ctx, -5.5, -11, 11, 4.2, 2); paint(ctx, C.accent, C.ink, 1.6);
+  // toe rim
+  ink(ctx, shade(fill, 1.42), 1.3);
+  ctx.beginPath(); ctx.moveTo(-4, -7.8); ctx.lineTo(7, -7.8); ctx.stroke();
+  ctx.restore();
+}
+
+// a fencer's gauntlet — slim flared cuff + a gloved hand gripping along `ang`.
+// lighter and more tapered than the heavy plate gauntlet, to keep him quick.
+function glove(ctx, x, y, r, ang, C, o = {}) {
+  const fill = o.fill ?? C.primary;
+  ctx.save();
+  ctx.translate(x, y); ctx.rotate(ang);
+  // flared cuff (behind the hand)
+  poly(ctx, [[-r * 1.3, -r * 1.05], [-r * 0.5, -r * 0.85], [-r * 0.5, r * 0.85], [-r * 1.3, r * 1.05]]);
+  paint(ctx, shade(fill, 0.82), C.ink, 2);
+  // hand mass
+  roundRect(ctx, -r * 0.5, -r * 0.9, r * 1.5, r * 1.8, r * 0.5);
+  paint(ctx, fill, C.ink, 2.2);
+  // shaded underside
+  ctx.save();
+  roundRect(ctx, -r * 0.5, -r * 0.9, r * 1.5, r * 1.8, r * 0.5); ctx.clip();
+  roundRect(ctx, -r * 0.5, r * 0.12, r * 1.5, r * 1.0, r * 0.3);
+  paint(ctx, shade(fill, 0.74), null);
+  ctx.restore();
+  // knuckle line + rim on the lit edge
+  ink(ctx, C.ink, 1.2);
+  ctx.beginPath(); ctx.moveTo(r * 0.5, -r * 0.4); ctx.lineTo(r * 1.0, -r * 0.4); ctx.stroke();
+  ink(ctx, shade(fill, 1.42), 1.3);
+  ctx.beginPath(); ctx.moveTo(-r * 0.28, -r * 0.82); ctx.lineTo(r * 0.92, -r * 0.82); ctx.stroke();
+  if (o.accent) disc(ctx, r * 0.18, -r * 0.04, r * 0.3, o.accent, C.ink, 1.3);
+  ctx.restore();
+}
+
+// a plated arm: sleeve plate + elbow couter + forearm plate. returns the hand pt.
+function drawArm(ctx, sx, sy, hx, hy, dir, C, o) {
+  const { jx, jy, ex, ey } = ikSolve(sx, sy, hx, hy, ARM_U, ARM_F, dir);
+  platedSeg(ctx, sx, sy, jx, jy, o.uw, C, { fill: o.fill, light: -1 });
+  platedSeg(ctx, jx, jy, ex, ey, o.fw, C, { fill: o.fill, light: -1 });
+  jointCap(ctx, jx, jy, o.elbow, C, { fill: o.fill });
+  return [ex, ey];
+}
+
+// a plated leg: thigh (breeches) + knee poleyn + greave + sea-boot
+function drawLeg(ctx, hx, hy, foot, bend, C, o) {
+  const { jx, jy, ex, ey } = ikSolve(hx, hy, foot[0], foot[1] - 3, LEG_T, LEG_S, bend);
+  platedSeg(ctx, hx, hy, jx, jy, o.tw, C, { fill: o.fill, light: -1 });
+  platedSeg(ctx, jx, jy, ex, ey, o.sw, C, { fill: o.fill, light: -1 });
+  jointCap(ctx, jx, jy, o.knee, C, { fill: o.fill });
+  seaBoot(ctx, ex, ey, C, o.fill);
 }
 
 const THRUSTS = new Set(['jab', 'ftilt', 'fair', 'dair', 'dtilt', 'nb', 'sb']);
@@ -39,29 +110,34 @@ export const tideRig = {
     const M = A.move;
     const SKIN = '#b9e6da';
 
-    // ── metrics + wave rock ──────────────────────────────────────────────
-    const idleAmt = A.grounded && !M && !A.guard && !A.dizzy && A.runAmt < 0.05 && !A.crouch ? 1 : 0;
-    const rock = idleAmt * Math.sin(t * 1.6) * 2.2;
-    const crouchDrop = A.crouch * 13;
+    // ── metrics + wave rock + breathing ──────────────────────────────────
+    const idleAmt = A.grounded && !M && !A.guard && !A.dizzy && !A.reel &&
+                    A.runAmt < 0.05 && A.crouch < 0.2 ? 1 : 0;
+    const rock = idleAmt * Math.sin(t * 1.6) * 2.2;        // slow wave weight-rock
+    const sway = idleAmt * Math.sin(t * 1.6 + 0.7);        // contrapposto counter-turn
+    const crouchDrop = A.crouch * 14;
     const isThrust = M && THRUSTS.has(M.id);
     const lungeK = isThrust ? (M.ph === 'hit' ? 1 : M.ph === 'rec' ? 1 - M.rk : 0) : 0;
-    const hipY = -36 + crouchDrop + lungeK * 5;
-    const shY = -62 + crouchDrop * 1.1 + A.breathe * 1.2 + lungeK * 6;
-    const headY = -77 + crouchDrop * 1.15 + A.breathe * 1.4 + lungeK * 6;
+    const breathY = A.breathe * 1.3;
+    const hipY = -38 + crouchDrop + lungeK * 6;
+    const shY = -64 + crouchDrop * 1.1 + breathY + lungeK * 7;
+    const headY = -80 + crouchDrop * 1.15 + breathY * 1.15 + lungeK * 7;
     const headR = 10;
 
-    let lean = A.lean;
+    let lean = A.lean - sway * 0.04;
     let lunge = 0;
     if (M) {
-      lunge = M.lunge * (isThrust ? 13 : 6);
+      lunge = M.lunge * (isThrust ? 14 : 6);
       if (M.ph === 'wind') lean -= 0.16 * M.wk;
       else if (M.ph === 'hit') lean += isThrust ? 0.34 : 0.2;
       else lean += 0.2 * (1 - M.rk);
       if (M.id === 'ub') lean = -0.25;
+      if (M.id === 'db') lean = M.ph === 'hit' ? 0 : lean;       // upright spin
     }
     if (A.reel) lean = -0.5;
+    if (A.hang) lean = -0.1;
 
-    // ── water sash ───────────────────────────────────────────────────────
+    // ── water sash (world space → verlet → local) ────────────────────────
     const wxy = (lx, ly) => [p.x + lx * p.facing * s, p.y + ly * s];
     const [sax, say] = wxy(-7, hipY - 1);
     const sashPts = chainLocal(
@@ -85,7 +161,6 @@ export const tideRig = {
     ctx.restore();
 
     // ── legs: fencing footwork ───────────────────────────────────────────
-    const legW = 5.4, legL = 19;
     let f1 = [11 + rock * 0.6, 0], f2 = [-9 + rock * 0.3, 0];
     let bend1 = 1, bend2 = -1;
     if (A.hang) {
@@ -95,36 +170,19 @@ export const tideRig = {
       else { f1 = [8, -12 - A.rise * 5]; f2 = [-11, -2 + A.fall * 2]; } // scissor
     } else if (A.runAmt > 0.05) {
       const ph = A.runPhase, k = A.runAmt;
-      f1 = [Math.sin(ph) * 23 * k, -Math.max(0, Math.cos(ph)) * 8 * k];
-      f2 = [Math.sin(ph + Math.PI) * 23 * k, -Math.max(0, Math.cos(ph + Math.PI)) * 8 * k];
+      f1 = [Math.sin(ph) * 23 * k, -Math.max(0, Math.cos(ph)) * 9 * k];
+      f2 = [Math.sin(ph + Math.PI) * 23 * k, -Math.max(0, Math.cos(ph + Math.PI)) * 9 * k];
     } else if (lungeK > 0) {
-      f1 = [20 + lungeK * 6, 0]; f2 = [-14 - lungeK * 6, 0];          // full lunge extension
-      bend2 = -1;
+      f1 = [22 + lungeK * 8, 0]; f2 = [-16 - lungeK * 7, 0];          // full lunge extension
+    } else if (idleAmt) {
+      f1 = [11 + rock * 0.6 - sway * 1.2, 0]; f2 = [-9 + rock * 0.3 - sway * 1.6, 0];
     }
-    limbIK(ctx, -4, hipY, f2[0], f2[1] - 3, legL, legL, bend2, legW, C.secD, C.ink);
-    poly(ctx, [[f2[0] - 6, f2[1] - 5], [f2[0] + 6, f2[1] - 5], [f2[0] + 7, f2[1]], [f2[0] - 6, f2[1]]]);
-    paint(ctx, C.secD, C.ink, 2);
-    limbIK(ctx, 4, hipY, f1[0], f1[1] - 3, legL, legL, bend1, legW, C.secondary, C.ink);
-    poly(ctx, [[f1[0] - 6, f1[1] - 5.5], [f1[0] + 7, f1[1] - 5.5], [f1[0] + 9, f1[1]], [f1[0] - 6, f1[1]]]);
-    paint(ctx, C.primary, C.ink, 2);
 
-    // ── torso: duelist jacket with high collar ───────────────────────────
-    poly(ctx, [[-10.5, shY - 2], [10.5, shY - 2], [8, hipY + 1], [-8, hipY + 1]]);
-    paint(ctx, C.primary, C.ink, 2.6);
-    poly(ctx, [[-9.2, shY + 11], [9.2, shY + 11], [8, hipY + 1], [-8, hipY + 1]]);
-    paint(ctx, C.priD, null);
-    // jacket front seam + buttons
-    ink(ctx, C.accD, 1.6);
-    ctx.beginPath(); ctx.moveTo(2, shY); ctx.lineTo(1, hipY); ctx.stroke();
-    for (let i = 0; i < 3; i++) disc(ctx, 4.5, shY + 6 + i * 6.5, 1.3, C.accent, null);
-    // waist sash knot
-    roundRect(ctx, -8.5, hipY - 4, 17, 5.5, 2.5); paint(ctx, C.glow, C.ink, 2);
-    // high collar
-    poly(ctx, [[-7.5, shY - 2], [7.5, shY - 2], [6.5, shY - 8], [-6.5, shY - 8]]);
-    paint(ctx, C.secondary, C.ink, 2.2);
+    // back leg (far, darker) then front leg (near, bright)
+    drawLeg(ctx, -4, hipY, f2, bend2, C, { fill: C.secondary, tw: 10, sw: 8.3, knee: 5 });
+    drawLeg(ctx, 4, hipY, f1, bend1, C, { fill: C.primary, tw: 11, sw: 9, knee: 5.4 });
 
-    // ── back arm: fencer's curl ──────────────────────────────────────────
-    const armW = 5, armL = 14.5;
+    // ── back arm: fencer's curl (drawn behind the torso) ─────────────────
     const shB = [-6, shY + 2];
     let hB = [-13, shY - 12 + rock * 0.4];                  // curled up behind
     if (A.hang) hB = [-4, shY + 12];
@@ -136,39 +194,102 @@ export const tideRig = {
     else if (M && M.id === 'db') {
       const k = M.ph === 'hit' ? M.hk : M.ph === 'rec' ? 1 : 0;
       hB = [Math.cos(2.4 + k * 4) * 16, shY + 2 + Math.sin(2.4 + k * 4) * 12];
-    } else if (lungeK > 0) hB = [-19 - lungeK * 3, shY - 4 + lungeK * 6];  // counterbalance
-    limbIK(ctx, shB[0], shB[1], hB[0], hB[1], armL, armL, 1, armW, C.secD, C.ink);
-    disc(ctx, hB[0], hB[1], 3.4, SKIN, C.ink, 1.8);
+    } else if (lungeK > 0) hB = [-19 - lungeK * 4, shY - 4 + lungeK * 7];  // counterbalance
+    const handB = drawArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C,
+      { uw: 8, fw: 6.6, elbow: 4.4, fill: C.secD });
+    glove(ctx, handB[0], handB[1], 4.4, Math.atan2(hB[1] - shB[1], hB[0] - shB[0]) + 0.6, C, { fill: C.secD });
+
+    // ── torso: high-collared duelist jacket ──────────────────────────────
+    // collar yoke behind the head
+    roundRect(ctx, -8.5, shY - 9, 17, 9, 4); paint(ctx, C.secD, C.ink, 2.2);
+    // jacket body — bright plate read with a cel shadow + sternum rim
+    poly(ctx, [[-11, shY - 2], [11, shY - 2], [8.5, hipY + 1], [-8.5, hipY + 1]]);
+    paint(ctx, C.primary, C.ink, 2.6);
+    poly(ctx, [[-9.6, shY + 11], [9.6, shY + 11], [8.5, hipY + 1], [-8.5, hipY + 1]]);
+    paint(ctx, C.priD, null);
+    ink(ctx, shade(C.primary, 1.4), 1.6);
+    ctx.beginPath(); ctx.moveTo(-8.5, shY + 1); ctx.quadraticCurveTo(0, shY - 3, 8.5, shY + 1); ctx.stroke();
+    // lapel trim + buttons (break the dark, accent line down the front)
+    ink(ctx, C.accent, 1.7);
+    ctx.beginPath(); ctx.moveTo(2.5, shY); ctx.lineTo(1.2, hipY); ctx.stroke();
+    for (let i = 0; i < 3; i++) disc(ctx, 4.7, shY + 6 + i * 6.5, 1.3, C.accent, null);
+    // chest shell sigil
+    glowOn(ctx, C.glow, M ? 9 : 6);
+    poly(ctx, [[-3.5, shY + 4], [3.5, shY + 4], [2, shY + 9], [-2, shY + 9]]);
+    paint(ctx, C.accent, C.ink, 1.4);
+    glowOff(ctx);
+    // waist sash knot
+    roundRect(ctx, -9, hipY - 4, 18, 5.5, 2.5); paint(ctx, C.glow, C.ink, 2);
+    ink(ctx, '#e8fffb', 1.2);
+    ctx.beginPath(); ctx.moveTo(-7, hipY - 2); ctx.lineTo(7, hipY - 2); ctx.stroke();
+    // high collar (over the yoke)
+    poly(ctx, [[-7.5, shY - 1], [7.5, shY - 1], [6, shY - 9], [-6, shY - 9]]);
+    paint(ctx, C.secondary, C.ink, 2.2);
+    ink(ctx, C.glow, 1.5);
+    ctx.beginPath(); ctx.moveTo(-5.5, shY - 8); ctx.lineTo(-4.5, shY - 1); ctx.stroke();
+
+    // ── fin epaulettes on the shoulders (echo the helm crest) ────────────
+    for (const [ex, far] of [[-8.5, true], [8.5, false]]) {
+      ctx.save();
+      ctx.translate(ex, shY + 1);
+      const fill = far ? shade(C.secondary, 1.1) : C.primary;
+      poly(ctx, [[0, -5], [far ? -8 : 7, -3], [far ? -5 : 4, 4], [0, 3]]);
+      paint(ctx, fill, C.ink, 2);
+      ink(ctx, shade(fill, 1.45), 1.3);
+      ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(far ? -6 : 5, -2.5); ctx.stroke();
+      ctx.restore();
+    }
 
     // ── head: fin-crest helm ─────────────────────────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
+    // face
     disc(ctx, 0, 0, headR, SKIN, C.ink, 2.4);
-    // fin ears
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, headR, 0, TAU); ctx.clip();
+    ctx.beginPath(); ctx.arc(-headR * 0.45, headR * 0.35, headR * 0.95, 0, TAU);
+    paint(ctx, shade(SKIN, 0.86), null);                  // cel shadow on the dark flank
+    ctx.restore();
+    // fin ears (back of the head)
     poly(ctx, [[-headR * 0.8, -headR * 0.1], [-headR * 1.8, -headR * 0.55], [-headR * 0.9, headR * 0.5]]);
     paint(ctx, C.glow, C.ink, 2.2);
     poly(ctx, [[-headR * 0.85, -headR * 0.02], [-headR * 1.45, -headR * 0.3], [-headR * 0.9, headR * 0.3]]);
     paint(ctx, C.trail, null);
-    // helm cap
+    // helm cap — bright, rim-lit, with a darker back curve
     ctx.beginPath();
-    ctx.arc(0, -headR * 0.12, headR * 1.08, Math.PI * 0.9, TAU + Math.PI * 0.08);
+    ctx.arc(0, -headR * 0.12, headR * 1.1, Math.PI * 0.9, TAU + Math.PI * 0.08);
     paint(ctx, C.primary, C.ink, 2.4);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, -headR * 0.12, headR * 1.1, Math.PI * 0.9, TAU + Math.PI * 0.08); ctx.clip();
+    ctx.beginPath(); ctx.arc(-headR * 0.5, headR * 0.05, headR * 1.0, 0, TAU);
+    paint(ctx, C.priD, null);
+    ctx.restore();
+    ink(ctx, shade(C.primary, 1.45), 1.6);
+    ctx.beginPath(); ctx.arc(0, -headR * 0.12, headR * 0.9, Math.PI * 1.12, Math.PI * 1.82); ctx.stroke();
+    // cheek guard (a small swept plate)
+    poly(ctx, [[headR * 0.9, -headR * 0.1], [headR * 0.5, -headR * 0.1], [headR * 0.62, headR * 0.7]]);
+    paint(ctx, C.secondary, C.ink, 1.8);
     // fin crest — tall swept-back sail
     const crestSway = Math.sin(t * 2.8) * 1.2 - p.vx * p.facing * 0.35;
     ctx.beginPath();
-    ctx.moveTo(headR * 0.45, -headR * 1.02);
+    ctx.moveTo(headR * 0.45, -headR * 1.04);
     ctx.quadraticCurveTo(headR * 0.1, -headR * 2.3, -headR * 1.9 + crestSway, -headR * 2.25);
     ctx.quadraticCurveTo(-headR * 1.25 + crestSway * 0.6, -headR * 1.45, -headR * 0.85, -headR * 0.72);
     ctx.closePath();
     paint(ctx, C.glow, C.ink, 2.4);
     ctx.beginPath();
-    ctx.moveTo(headR * 0.1, -headR * 1.12);
+    ctx.moveTo(headR * 0.1, -headR * 1.14);
     ctx.quadraticCurveTo(-headR * 0.1, -headR * 1.95, -headR * 1.2 + crestSway * 0.8, -headR * 1.95);
     ctx.quadraticCurveTo(-headR * 0.85 + crestSway * 0.5, -headR * 1.35, -headR * 0.5, -headR * 0.85);
     ctx.closePath();
     paint(ctx, C.trail, null);
-    // crest ribs
-    ink(ctx, C.primary, 1.6);
+    // leading-edge rim + crest ribs
+    ink(ctx, '#e8fffb', 1.5);
+    ctx.beginPath();
+    ctx.moveTo(headR * 0.4, -headR * 1.06);
+    ctx.quadraticCurveTo(headR * 0.05, -headR * 2.24, -headR * 1.82 + crestSway, -headR * 2.2);
+    ctx.stroke();
+    ink(ctx, C.primary, 1.5);
     for (const k of [0.35, 0.7]) {
       ctx.beginPath();
       ctx.moveTo(headR * (0.3 - k * 1.3), -headR * (1.0 + k * 0.18));
@@ -178,7 +299,7 @@ export const tideRig = {
     face(ctx, headR * 0.3, headR * 0.05, headR, C, A, { color: '#10333d', spread: headR * 0.55 });
     ctx.restore();
 
-    // ── front arm + rapier ───────────────────────────────────────────────
+    // ── front arm + rapier + glove ───────────────────────────────────────
     const shF = [6, shY + 2];
     let hF, wA, flourish = 0;
     if (A.hang) {
@@ -200,11 +321,11 @@ export const tideRig = {
         hF = [4, shY - 16]; wA = -Math.PI / 2 + 0.06;       // skyward point
       } else if (isThrust) {
         const ext = M.ph === 'wind' ? -M.wk * 0.45 : M.ph === 'hit' ? easeOut(M.hk) : 1 - M.rk * 0.8;
-        const reach = 10 + ext * 14;
+        const reach = 11 + ext * 15;
         hF = [Math.cos(M.aim) * reach, shY + 3 + Math.sin(M.aim) * reach];
         wA = M.aim;                                          // blade locked on target line
       } else {
-        const reach = 19;
+        const reach = 20;
         hF = [Math.cos(M.swing) * reach, shY + 2 + Math.sin(M.swing) * reach];
         wA = M.swing;
       }
@@ -219,17 +340,18 @@ export const tideRig = {
             shY + 12 + Math.sin(flourish) * (flourish ? 3 : 0)];
       wA = 0.5 + (flourish ? Math.sin(flourish) * 0.35 : Math.sin(t * 1.6) * 0.05);
     }
-    limbIK(ctx, shF[0], shF[1], hF[0], hF[1], armL, armL, -1, armW, C.primary, C.ink);
+    const handF = drawArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C,
+      { uw: 8.4, fw: 7, elbow: 4.7, fill: C.primary });
     ctx.save();
-    ctx.translate(hF[0], hF[1]);
+    ctx.translate(handF[0], handF[1]);
     ctx.rotate(wA);
     rapier(ctx, C);
     ctx.restore();
-    disc(ctx, hF[0], hF[1], 3.4, SKIN, C.ink, 1.8);
+    glove(ctx, handF[0], handF[1], 5.2, wA, C, { fill: C.primary, accent: C.accent });
 
     // ── water FX ─────────────────────────────────────────────────────────
     if (M && M.ph === 'hit') {
-      const tipX = hF[0] + Math.cos(wA) * 48, tipY = hF[1] + Math.sin(wA) * 48;
+      const tipX = handF[0] + Math.cos(wA) * 48, tipY = handF[1] + Math.sin(wA) * 48;
       if (M.id === 'db') {
         // whirlpool rings
         const k = M.hk;
@@ -269,11 +391,10 @@ export const tideRig = {
       }
     }
     if (p.moveId === 'nb' && (p.charge || 0) > 0) {
-      chargeOrb(ctx, hF[0] + Math.cos(wA) * 48, hF[1] + Math.sin(wA) * 48, p.charge, 66, C, t);
+      chargeOrb(ctx, handF[0] + Math.cos(wA) * 48, handF[1] + Math.sin(wA) * 48, p.charge, 66, C, t);
     }
     if (A.dizzy) dizzyStars(ctx, 0, headY - headR * 2.4, t);
 
     ctx.restore();
   },
 };
-
