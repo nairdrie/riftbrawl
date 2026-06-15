@@ -199,10 +199,10 @@ export const CHARACTERS = {
       utilt: { name: 'Zenith Flare',   total: 34, hitboxes: [hb(10, 17, 5, -68, 40, 10.5, 88, 6.2, 13.0)] },
       dtilt: { name: 'Singularity Low',total: 29, hitboxes: [hb(9, 13, 54, 25, 32, 9, 32, 5.6, 10.5)] },
       nair:  { name: 'Orbit Field',    total: 34, hitboxes: [hb(7, 24, 0, 0, 50, 9.5, 45, 5.6, 9.5)] },
-      fair:  { name: 'Quasar Palm',    total: 35, hitboxes: [hb(12, 17, 54, -6, 40, 12.5, 40, 6.8, 14.5)] },
+      fair:  { name: 'Quasar Palm',    total: 35, hitboxes: [hb(12, 17, 54, -6, 40, 12.5, 40, 6.8, 14.5, 1.25)] },
       bair:  { name: 'Dark Ellipse',   total: 32, hitboxes: [hb(10, 15, -52, -5, 38, 12, 34, 6.8, 14.0)] },
       uair:  { name: 'Corona Sweep',   total: 31, hitboxes: [hb(9, 15, 3, -60, 42, 11, 86, 6.2, 13.5)] },
-      dair:  { name: 'Collapse Strike',total: 38, hitboxes: [hb(14, 20, 0, 56, 36, 12, -79, 6.4, 12.0)] },
+      dair:  { name: 'Collapse Strike',total: 38, hitboxes: [hb(14, 20, 0, 56, 36, 12, -79, 6.4, 12.0, 1.3)] },
     },
     specials: {
       // shards orbit her (up to 3) as a moving shield; at 3, pressing again
@@ -215,7 +215,7 @@ export const CHARACTERS = {
       ub: { name: 'Supernova Climb', type: 'recovery', total: 52, from: 6, to: 26,
             vy: -17.0, drift: 5.0, dx: 0, dy: -28, r: 42, dmg: 10, angle: 83, bkb: 6.4, kbg: 11 },
       // an actual black hole: pulls enemies in during the window, then detonates
-      db: { name: 'Black Halo', type: 'pull', total: 56, from: 14, to: 30,
+      db: { name: 'Black Halo', type: 'pull', total: 56, from: 14, to: 30, hl: 1.4,
             pullR: 150, pullAccel: 1.05, dx: 0, dy: 0,
             r: 84, dmg: 13, angle: 76, bkb: 7.5, kbg: 14 },
     },
