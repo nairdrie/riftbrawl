@@ -159,7 +159,6 @@ function drawWeapon(ctx, C, w, hot) {
 
 export function buildDataRig(spec) {
   const sk = spec.skel;
-  const W = spec.weapon || { type: 'none' };
 
   return {
     spec,
@@ -169,6 +168,15 @@ export function buildDataRig(spec) {
       const M = A.move;
       const st = A.st;
       const landK = st?.landK ?? 0;
+
+      // Dev pose-tuner hook: /dev/tuner.html sets globalThis.__RIG_TUNE__[id] to
+      // live slider values so the real engine renders WYSIWYG while you dial a
+      // pose in. Never set in production → all reads fall back to spec/defaults.
+      const tune = (typeof globalThis !== 'undefined' && globalThis.__RIG_TUNE__
+                    && globalThis.__RIG_TUNE__[spec.id]) || null;
+      const W = tune?.weapon
+        ? { ...(spec.weapon || { type: 'none' }), ...tune.weapon }
+        : (spec.weapon || { type: 'none' });
 
       const limbCol = col(C, spec.limb?.color, C.primary);
       const backCol = shade(limbCol, 0.74);
@@ -190,11 +198,19 @@ export function buildDataRig(spec) {
       // the near/far limbs are separated mostly in depth, not screen width.
       // `depth` scales the frontal hip/shoulder width (1 = full front-on, 0 =
       // razor profile); ~0.55 reads as a confident 3/4 stance.
-      const depth = spec.depth ?? 0.55;
+      const depth = tune?.depth ?? spec.depth ?? 0.55;
       const hipW = (sk.hipW ?? 7) * depth;
       const shoulderXd = (sk.shoulderX ?? 9) * depth;
       // idle sinks into an athletic guard: hips drop a touch so the knees bend
-      const idleSettle = idle ? (spec.idleSettle ?? 3) : 0;
+      const idleSettle = idle ? (tune?.settle ?? spec.idleSettle ?? 3) : 0;
+      // IDLE POSE — authored data (tune live in /dev/tuner.html, then bake into
+      // spec.idlePose). All values are local units; the front hand/foot lead +x.
+      const IP = {
+        leadFoot: 8, rearFoot: -11, rearLift: 1.5,   // foot placement (staggered)
+        handX: 24, handY: 5, wrist: -0.5,            // sword hand + blade angle
+        backHandX: 3, backHandY: 13, leanAdd: 0,     // off hand + forward lean
+        ...(spec.idlePose || {}), ...(tune?.idlePose || {}),
+      };
       const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
       const shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
       const headY = sk.headY + crouchDrop * 1.1 + idleSettle + breathY * 1.2 + stepBob;
@@ -213,6 +229,7 @@ export function buildDataRig(spec) {
         if (M.id === 'db') lean = Math.sin(t * 22) * 0.05;              // spin: near-upright
         if (M.id === 'utilt') lean = M.ph === 'hit' ? -0.1 : lean;
       }
+      if (idle) lean += IP.leanAdd;
       if (A.reel) lean = -0.5;
       if (A.hang) lean = -0.1;
 
@@ -245,7 +262,9 @@ export function buildDataRig(spec) {
       // ── foot targets ─────────────────────────────────────────────────────────
       const stance = sk.stance ?? 12;
       let f1 = [stance + sway * 1.2, 0], f2 = [-stance + sway * 1.2, 0];
-      let bend1 = 1, bend2 = -1;
+      // knees bend FORWARD (toward facing) by default — a side-view convention,
+      // not the camera-facing splay the rig started with. Run overrides per step.
+      let bend1 = -1, bend2 = -1;
       if (A.airborne && !A.hang) {
         f1 = [10 + A.rise * 5, -13 - A.rise * 7];
         f2 = [-12, -3 + A.fall * 3];
@@ -259,13 +278,11 @@ export function buildDataRig(spec) {
       } else if (M && M.ph !== 'wind') {
         f1 = [stance + 8, 0]; f2 = [-stance - 4, 0];
       } else if (idle) {
-        // side-on fighting stance: lead foot forward + flat, rear foot planted
-        // back with the heel a touch lifted; both knees bend FORWARD (sagittal
-        // plane) instead of toward each other; weight rocks with the idle sway
-        // compact, overlapping profile stance — a modest stagger (the near leg
-        // sits mostly in front of the far one), NOT a wide front-on A-frame
-        f1 = [stance * 0.5 + 2 - sway * 0.8, 0];      // lead foot — knee bends over it
-        f2 = [-stance * 0.7 - 3 - sway * 1.2, -1.5];  // rear foot — back, heel lifted
+        // compact, overlapping side-on stance from authored IP data: a modest
+        // stagger (the near leg sits mostly in front of the far one), both knees
+        // forward; NOT a wide front-on A-frame
+        f1 = [IP.leadFoot - sway * 0.8, 0];            // lead foot — knee bends over it
+        f2 = [IP.rearFoot - sway * 1.2, -IP.rearLift]; // rear foot — back, heel lifted
         bend1 = -1; bend2 = -1;
       }
       if (A.crouch > 0.3) { f1[0] += 4; f2[0] -= 4; }
@@ -317,16 +334,16 @@ export function buildDataRig(spec) {
       } else if (A.runAmt > 0.05) {
         hF = [11, shY + 8]; hB = [-9 - Math.sin(A.runPhase) * 5 * A.runAmt, shY + 14]; wA = -2.35; twoHand = false;
       } else {
-        // idle: a side-on guard. lead hand up and out front with the blade
-        // angled forward (a heavily-folded arm throws the elbow out); the rear
-        // hand tucks to the ribs as a counterbalance, breathing with the sway.
+        // idle: a side-on guard from authored IP data. lead hand up + out front
+        // with the blade angled forward (folded arm drops the elbow into guard);
+        // rear hand tucks to the ribs as a counterbalance, breathing with sway.
         const bob = sway * 0.8;
         const carry = W.idle === 'shoulder' ? { hF: [5, shY - 3 + bob], wA: -1.2 }
                     : W.idle === 'down' ? { hF: [16, shY + 22 + bob], wA: 1.2 }
-                    : { hF: [24, shY + 5 + bob], wA: -0.5 };          // 'rest' = guard
+                    : { hF: [IP.handX, shY + IP.handY + bob], wA: IP.wrist };   // 'rest' = guard
         hF = carry.hF; wA = carry.wA;
         if (W.idle !== 'shoulder') armBendF = 1;                      // elbow drops into the guard
-        hB = [3, shY + 13 + bob * 0.6];                              // rear hand tucked to the body
+        hB = [IP.backHandX, shY + IP.backHandY + bob * 0.6];          // rear hand tucked to the body
         twoHand = !!W.idleTwoHand;
       }
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];

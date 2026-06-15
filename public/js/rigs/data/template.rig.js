@@ -28,6 +28,17 @@ export const templateSpec = {
 
   light: -1,                // key-light side for plated parts: -1 lit on +x edge
 
+  // ── side-view stance — author these in /dev/tuner.html, then paste here ───
+  // This is a profile fighter, not a figure facing the camera. `depth` scales
+  // the frontal hip/shoulder width (1 = front-on, ~0.55 = a confident 3/4).
+  depth: 0.55,
+  idleSettle: 3,            // how far the hips sink into an athletic guard
+  idlePose: {               // the resting stance + weapon hold (local units, +x = front)
+    leadFoot: 8, rearFoot: -11, rearLift: 1.5,
+    handX: 24, handY: 5, wrist: -0.5,
+    backHandX: 3, backHandY: 13, leanAdd: 0,
+  },
+
   // ── skeleton: the proportions the engine poses every frame ────────────────
   skel: {
     hipY: -42,              // pelvis height above the feet

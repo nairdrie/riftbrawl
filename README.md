@@ -138,6 +138,9 @@ the spec is presentation only.
 - **Art template**: open `/dev/rig.html` — the **rig map**: a labelled rest
   skeleton on a measured grid to draw your design over, plus the live rig in
   motion. `/dev/poses.html` shows every state of every character on one sheet.
+- **Pose tuner**: open `/dev/tuner.html` — drive the real rig with sliders
+  (stance, sword hold, depth) over an optional reference photo, then copy the
+  exact spec values. Profile poses are authored data, not guesswork.
 
 Pipeline: *draw on the rig map → fill in a spec → register it in `fighters.js`.*
 

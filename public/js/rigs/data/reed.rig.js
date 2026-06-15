@@ -19,6 +19,17 @@ export const reedSpec = {
   // which side the key light favors on plated parts (-1 = front edge lit)
   light: -1,
 
+  // ── side-view stance (authored in /dev/tuner.html, then pasted here) ───────
+  // depth: 1 = full front-on width, 0 = razor profile. idlePose units are local
+  // (front hand/foot lead +x). Tweak live in the tuner; these are the baked nums.
+  depth: 0.55,
+  idleSettle: 3,
+  idlePose: {
+    leadFoot: 8, rearFoot: -11, rearLift: 1.5,    // staggered feet
+    handX: 24, handY: 5, wrist: -0.5,             // sword hand + blade angle
+    backHandX: 3, backHandY: 13, leanAdd: 0,      // off hand + forward lean
+  },
+
   // ── skeleton: proportions the runtime poses every frame ───────────────────
   skel: {
     hipY: -42,        // pelvis height above the feet

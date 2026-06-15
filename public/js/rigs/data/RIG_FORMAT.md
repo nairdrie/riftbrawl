@@ -35,6 +35,26 @@ turnaround"), ideally traced over the rig map so the proportions already line up
 
 That's the whole pipeline: **draw on the rig map → fill in a spec → register it.**
 
+## It's a side view — pose without the guesswork
+
+These fighters are drawn in **profile** (the character faces +x, the way it
+moves), not facing the camera. Two consequences the format bakes in:
+
+- **Depth, not width.** Near/far limbs are separated mostly in *depth*, so
+  `depth` (default `0.55`) compresses the frontal hip/shoulder width into a 3/4
+  silhouette. Knees bend *forward* (sagittal plane), never toward each other.
+- **The resting stance + weapon hold are authored data** (`idleSettle`,
+  `idlePose`), not magic numbers — so you can dial them in by eye instead of
+  guessing coordinates.
+
+**Use the Pose Tuner — `/dev/tuner.html`.** It renders the *real* engine and
+gives you sliders for the whole idle stance (foot stagger, hip sink, lead-hand
+position, blade angle, off-hand, lean) and the weapon dimensions. You can drop a
+**reference photo/drawing behind the rig** and match it. When it looks right, hit
+**Copy spec** and paste the block into your `.rig.js` (`depth`, `idleSettle`,
+`idlePose`, `weapon`). This is the intended loop for getting hands and stances
+*correct* rather than approximate.
+
 ## Anatomy of a spec
 
 See `template.rig.js` for the annotated blank and `reed.rig.js` for the worked
