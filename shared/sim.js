@@ -185,7 +185,7 @@ export function getActiveHitboxes(p, char) {
     if (bodyHit && !sp.ghost && sp.dmg > 0 && f >= from && f <= to) {
       out.push({
         x: p.x + (sp.dx ?? 0) * p.facing, y: p.y - 40 * char.scale + (sp.dy ?? 0),
-        r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg,
+        r: sp.r, dmg: sp.dmg, angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg, hl: sp.hl,
       });
     }
   } else {
@@ -197,7 +197,7 @@ export function getActiveHitboxes(p, char) {
         out.push({
           x: p.x + hbx.dx * p.facing, y: p.y - 40 * char.scale + hbx.dy,
           r: hbx.r * (1 + t * 0.12), dmg: hbx.dmg * dm,
-          angle: hbx.angle, bkb: hbx.bkb * km, kbg: hbx.kbg * km,
+          angle: hbx.angle, bkb: hbx.bkb * km, kbg: hbx.kbg * km, hl: hbx.hl,
         });
       }
     }
@@ -250,7 +250,9 @@ function applyHit(target, tChar, hit, dirX, events, state, attacker, aChar) {
     target.vy = -Math.sin(rad) * kb;
     target.stun = Math.floor(kb * 2.0 + dmg * 0.4);
   }
-  target.hitlag = Math.min(14, Math.floor(dmg * 0.45) + 2);
+  // hit-stop: heavy moves (hit.hl > 1) freeze longer so they land with weight
+  const hl = hit.hl ?? 1;
+  target.hitlag = Math.min(hl > 1 ? 22 : 14, Math.round((Math.floor(dmg * 0.45) + 2) * hl));
   if (target.grabbing >= 0) releaseGrab(state, target);   // knocked out of a grab
   target.act = ACT.HITSTUN;
   target.actFrame = 0;
@@ -1000,14 +1002,15 @@ export function step(state, inputs) {
             const back = Math.sign(atk.x - tgt.x) || tgt.facing;
             tgt.facing = back;                                  // turn to face the attacker
             applyHit(atk, aChar,
-              { dmg: Math.max(sp.minDmg, h.dmg * sp.mult), angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg },
+              { dmg: Math.max(sp.minDmg, h.dmg * sp.mult), angle: sp.angle, bkb: sp.bkb, kbg: sp.kbg, hl: sp.hl },
               back, events, state, tgt, tChar);
             events.push({ type: 'counter', x: tgt.x, y: tgt.y - 40, who: tgt.idx });
           } else if (tgt.act === ACT.SHIELD && tgt.grounded) {
             applyShieldHit(tgt, h, dirX, events);
           } else {
             applyHit(tgt, tChar, h, dirX, events, state, atk, aChar);
-            atk.hitlag = Math.min(12, Math.floor(h.dmg * 0.4) + 1);
+            const ahl = h.hl ?? 1;
+            atk.hitlag = Math.min(ahl > 1 ? 20 : 12, Math.round((Math.floor(h.dmg * 0.4) + 1) * ahl));
           }
           break;
         }
