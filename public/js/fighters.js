@@ -15,6 +15,9 @@ import { voltRig } from './rigs/volt.js';
 import { emberRig } from './rigs/ember.js';
 import { tideRig } from './rigs/tide.js';
 import { novaRig } from './rigs/nova.js';
+// data-driven rigs (importable characters): one engine, many specs
+import { buildDataRig } from './rigs/data/runtime.js';
+import { reedSpec } from './rigs/data/reed.rig.js';
 
 const RIGS = {
   aegis: aegisRig,
@@ -22,9 +25,20 @@ const RIGS = {
   ember: emberRig,
   tide: tideRig,
   nova: novaRig,
+  reed: buildDataRig(reedSpec),
 };
 
 export const drawStar = starFn;
+
+// Lets a rig own its projectile's look. renderer.js calls this first for every
+// projectile; returning false (no rig, or no drawProjectile, or it declined)
+// falls back to the renderer's built-in kind-based visuals. The caller has
+// already translated the context to the projectile's position.
+export function drawRigProjectile(ctx, pr, t) {
+  const rig = RIGS[pr.charId];
+  if (!rig || typeof rig.drawProjectile !== 'function') return false;
+  return rig.drawProjectile(ctx, pr, CHARACTERS[pr.charId], t) === true;
+}
 
 // p: sim player, t: seconds for ambient anim, opts: {ghost}
 export function drawFighter(ctx, p, t, opts = {}) {

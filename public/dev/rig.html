@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>RIFTBRAWL — rig map / art template (dev)</title>
+  <style>
+    body { margin: 0; background: #0c1026; color: #aeb9d8; font: 14px/1.5 system-ui, sans-serif; }
+    header { padding: 14px 20px; border-bottom: 1px solid #1d2342; }
+    header h1 { margin: 0 0 2px; font-size: 17px; color: #eef2fb; letter-spacing: .04em; }
+    header p { margin: 0; color: #8d99c2; max-width: 980px; }
+    header code { color: #ffce3f; }
+    canvas { display: block; }
+    .wrap { padding: 16px 20px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚔ RIG MAP — the character art template</h1>
+    <p>The blueprint on the left is REED's rest skeleton with every <b>socket</b> and proportion
+       labelled (units: feet at <code>(0,0)</code>, +x faces right, y up = negative). Draw your
+       character design over the grid on the right at these proportions, then translate the pieces
+       into a rig spec (<code>public/js/rigs/data/template.rig.js</code> → see
+       <code>RIG_FORMAT.md</code>). The bottom strip is the live rig moving through its states.</p>
+  </header>
+  <div class="wrap"><canvas id="map"></canvas></div>
+  <script type="module" src="/dev/rig.js"></script>
+</body>
+</html>

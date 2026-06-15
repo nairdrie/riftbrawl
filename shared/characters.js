@@ -220,6 +220,45 @@ export const CHARACTERS = {
             r: 84, dmg: 13, angle: 76, bkb: 7.5, kbg: 14 },
     },
   },
+
+  // ── REED — The Blank Slate ──────────────────────────────────────────────
+  // The reference DATA RIG (see public/js/rigs/data/). A clean stick fencer with
+  // dead-average stats in every column — the honest baseline every imported
+  // legend is sketched on top of. No passive, no gimmick: a sword, four plain
+  // specials, and textbook all-round numbers (the mean of the five legends).
+  reed: {
+    id: 'reed', name: 'REED', title: 'The Blank Slate',
+    desc: 'A figure drawn in one stroke — no armor, no element, no tricks. Average in every column, and the canvas every new legend is sketched on top of.',
+    weight: 98, runSpeed: 5.6, airSpeed: 4.7, airAccel: 0.46,
+    jumpVel: 14.8, djVel: 14.5, gravity: 0.60, fallSpeed: 10.7, fastFall: 17.0,
+    friction: 0.84, scale: 1.0, hurtR: 36,
+    colors: { primary: '#eef2fb', secondary: '#4a5570', accent: '#ffce3f', glow: '#9fd0ff', trail: '#d3e4ff' },
+    ui: { power: 6, speed: 6, recovery: 6, weightStat: 6 },
+    moves: {
+      jab:   { name: 'Quick Slash',  total: 16, hitboxes: [hb(4, 6, 50, -7, 26, 3.5, 70, 3.4, 2.6)] },
+      ftilt: { name: 'Side Cut',     total: 28, hitboxes: [hb(8, 12, 58, -9, 33, 9.5, 35, 5.6, 11.5)] },
+      utilt: { name: 'Rising Cut',   total: 28, hitboxes: [hb(7, 13, 4, -62, 36, 8.5, 88, 5.2, 11.0)] },
+      dtilt: { name: 'Low Sweep',    total: 24, hitboxes: [hb(6, 10, 52, 24, 29, 7.5, 32, 5.0, 10.0)] },
+      nair:  { name: 'Spin Slash',   total: 30, hitboxes: [hb(5, 20, 0, 0, 44, 8, 46, 4.8, 8.5)] },
+      fair:  { name: 'Air Slash',    total: 30, hitboxes: [hb(9, 13, 52, -5, 34, 10, 41, 5.6, 12.5)] },
+      bair:  { name: 'Back Slash',   total: 28, hitboxes: [hb(8, 12, -50, -5, 32, 10.5, 34, 5.8, 12.5)] },
+      uair:  { name: 'Sky Slash',    total: 28, hitboxes: [hb(7, 12, 2, -54, 36, 9, 85, 5.2, 11.5)] },
+      dair:  { name: 'Dive Stab',    total: 34, hitboxes: [hb(12, 17, 0, 54, 32, 10, -80, 5.2, 10.5)] },
+    },
+    specials: {
+      // a thrown energy slash — chargeable like any neutral-B
+      nb: { name: 'Blade Beam', type: 'projectile', total: 30, fire: 11,
+            speed: 13, vy0: 0, grav: 0, r: 14, dmg: 6, angle: 22, bkb: 3.8, kbg: 5, life: 48 },
+      sb: { name: 'Lunge Thrust', type: 'dash', total: 38, from: 9, to: 24,
+            speed: 13, dx: 30, dy: -4, r: 34, dmg: 9, angle: 35, bkb: 6, kbg: 11 },
+      ub: { name: 'Rising Edge', type: 'recovery', total: 46, from: 6, to: 22,
+            vy: -18.0, drift: 4.0, dx: 0, dy: -26, r: 34, dmg: 8, angle: 80, bkb: 5.5, kbg: 9 },
+      // a quick spinning parry-sweep that also reflects projectiles mid-spin
+      db: { name: 'Riposte Spin', type: 'burst', total: 42, from: 12, to: 19,
+            reflect: { from: 8, to: 24 },
+            r: 64, dmg: 9, angle: 60, bkb: 6, kbg: 11 },
+    },
+  },
 };
 
-export const CHARACTER_LIST = ['aegis', 'volt', 'ember', 'tide', 'nova'];
+export const CHARACTER_LIST = ['aegis', 'volt', 'ember', 'tide', 'nova', 'reed'];

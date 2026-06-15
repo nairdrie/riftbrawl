@@ -1,7 +1,7 @@
 # ⚔ RIFTBRAWL
 
 A browser-native platform fighter in the spirit of Super Smash Bros — 60Hz
-realtime multiplayer, percent-based knockback, 3-stock deathmatches, five
+realtime multiplayer, percent-based knockback, 3-stock deathmatches, six
 legends, one beautiful floating arena.
 
 ![stack](https://img.shields.io/badge/stack-vanilla%20ESM%20%2B%20node-blueviolet)
@@ -70,6 +70,10 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | **EMBER** | The Cinder Witch | space control with wildfire orbs |
 | **TIDE** | The Wave Duelist | the honest all-rounder, deadly at every range |
 | **NOVA** | The Void Sentinel | floaty cosmic drift, enormous hits |
+| **REED** | The Blank Slate | a clean sword fencer, dead-average everything |
+
+REED is also the reference **data rig** — a fully-animated character described as
+pure data instead of bespoke draw code. See *Custom characters* below.
 
 ### Controls
 
@@ -113,8 +117,29 @@ public/     vanilla ES modules served as-is
                   player, ~70ms interpolation for remotes
   js/renderer.js  dynamic camera, stage, particles, HUD, announcements
   js/fighters.js  procedural vector fighters — no sprite assets
+  js/rigs/        per-character art: bespoke rigs + the data-rig engine
+    common.js       shared toolkit (IK, cloth, inked plate, FX, faces)
+    data/           importable characters (see Custom characters)
   js/sfx.js       all sound synthesized with WebAudio
 ```
+
+## Custom characters (importable rigs)
+
+Fighters are **procedural vector art** — a skeleton posed every frame with IK,
+cloth physics, squash & stretch and a per-move performance — so a new character
+is **not** a sprite sheet. It's a **declarative rig spec** (pure data: skeleton +
+skin + weapon + projectile) that one shared engine animates exactly like the
+built-in legends. Stats and movesets stay in `shared/characters.js` (sim data);
+the spec is presentation only.
+
+- **Format & workflow**: `public/js/rigs/data/RIG_FORMAT.md`
+- **Worked example**: `reed.rig.js` (the stick fencer REED)
+- **Blank to copy**: `template.rig.js`
+- **Art template**: open `/dev/rig.html` — the **rig map**: a labelled rest
+  skeleton on a measured grid to draw your design over, plus the live rig in
+  motion. `/dev/poses.html` shows every state of every character on one sheet.
+
+Pipeline: *draw on the rig map → fill in a spec → register it in `fighters.js`.*
 
 **Netcode**: the server simulates authoritatively at 60Hz and broadcasts
 snapshots at 30Hz with per-client input acks. Clients run the same

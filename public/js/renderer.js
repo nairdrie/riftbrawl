@@ -5,7 +5,7 @@
 
 import { STAGE, ACT, PHASE } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
-import { drawFighter, drawPortrait, drawStar } from './fighters.js';
+import { drawFighter, drawPortrait, drawStar, drawRigProjectile } from './fighters.js';
 
 const TAU = Math.PI * 2;
 const lerp = (a, b, t) => a + (b - a) * t;
@@ -735,7 +735,9 @@ export class Renderer {
       const kind = pr.kind || 'shot';
       ctx.save();
       ctx.translate(pr.x, pr.y);
-      switch (kind) {
+      // a data-driven rig may render its own projectile; otherwise fall through
+      // to the built-in kind-based visuals below.
+      if (!drawRigProjectile(ctx, pr, this.t)) switch (kind) {
         case 'patch': {
           // lingering fire pool
           const flick = 0.85 + Math.sin(this.t * 9 + pr.id) * 0.15;
