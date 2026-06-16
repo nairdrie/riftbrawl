@@ -261,4 +261,7 @@ export const CHARACTERS = {
   },
 };
 
-export const CHARACTER_LIST = ['aegis', 'volt', 'ember', 'tide', 'nova', 'reed'];
+// Selectable roster. REED is intentionally NOT here: it's the base/template
+// fighter the rig designer (/dev/tuner.html) starts from when building a new
+// character. CHARACTERS.reed still exists so the base can be rendered/cloned.
+export const CHARACTER_LIST = ['aegis', 'volt', 'ember', 'tide', 'nova'];

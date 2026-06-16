@@ -79,4 +79,10 @@ export const reedSpec = {
 
   // ── projectile look for the neutral-B "Blade Beam" ────────────────────────
   projectile: { shape: 'slash' },
+
+  // ── image-skinned body parts (character design) ───────────────────────────
+  // Empty = the vector stick figure above. Assign per part in /dev/tuner.html;
+  // each is { src: '/assets/.../part.png', scale, ox, oy, rot }. Parts:
+  // head, torso, upperArm, foreArm, thigh, shin, hand, foot, weapon.
+  images: {},
 };

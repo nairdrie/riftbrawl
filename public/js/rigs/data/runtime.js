@@ -29,13 +29,73 @@ function col(C, token, fallback) {
   return C[token] ?? fallback;
 }
 
+// ── image-skinned parts ──────────────────────────────────────────────────────
+// A part can be drawn from an image instead of vectors (character design). The
+// image follows the rigged bone, so it animates with the skeleton. `src` is a
+// URL/path (loaded + cached) OR a live <img>/<canvas> (used directly — the
+// tuner passes object URLs). All transforms are in the rig's local units.
+
+const imgCache = new Map();
+function resolveImg(src) {
+  if (!src) return null;
+  if (typeof src !== 'string') return (src.naturalWidth || src.width) ? src : null;
+  let e = imgCache.get(src);
+  if (!e) { e = new Image(); e.src = src; imgCache.set(src, e); }
+  return (e.complete && e.naturalWidth) ? e : null;
+}
+// resolve a part's image config from the spec; null if absent or not yet loaded
+function partImg(spec, name) {
+  const conf = spec.images && spec.images[name];
+  if (!conf || !conf.src) return null;
+  const img = resolveImg(conf.src);
+  if (!img) return null;
+  return { img, scale: conf.scale ?? 1, ox: conf.ox ?? 0, oy: conf.oy ?? 0, rot: conf.rot ?? 0 };
+}
+const imgDim = (img) => [img.naturalWidth || img.width, img.naturalHeight || img.height];
+// draw a part image stretched ALONG a bone A→B (its left edge anchors at A)
+function boneImage(ctx, ax, ay, bx, by, P, far) {
+  const [iw, ih] = imgDim(P.img);
+  const ang = Math.atan2(by - ay, bx - ax);
+  const len = Math.hypot(bx - ax, by - ay) || 1;
+  ctx.save();
+  if (far) ctx.globalAlpha *= 0.82;
+  ctx.translate(ax, ay);
+  ctx.rotate(ang + P.rot);
+  ctx.translate(P.ox, P.oy);
+  const s = (len / iw) * P.scale;
+  ctx.scale(s, s);
+  ctx.drawImage(P.img, 0, -ih / 2);
+  ctx.restore();
+}
+// draw a part image CENTERED on a point, sized to a reference span
+function pointImage(ctx, x, y, P, ref, ang, far) {
+  const [iw, ih] = imgDim(P.img);
+  ctx.save();
+  if (far) ctx.globalAlpha *= 0.82;
+  ctx.translate(x, y);
+  ctx.rotate((ang || 0) + P.rot);
+  ctx.translate(P.ox, P.oy);
+  const s = (ref / iw) * P.scale;
+  ctx.scale(s, s);
+  ctx.drawImage(P.img, -iw / 2, -ih / 2);
+  ctx.restore();
+}
+
 // ── skin primitives ──────────────────────────────────────────────────────────
 
 // A two-bone limb (shoulder/hip → joint → end). Returns the IK solution so the
 // caller can place a hand/foot at {ex,ey}. style 'stick' = inked stroke (+ an
 // optional bright core); style 'plated' = forged armor segments (aegis-class).
-function drawLimb(ctx, sx, sy, tx, ty, l1, l2, dir, w, fill, C, spec, core) {
+function drawLimb(ctx, sx, sy, tx, ty, l1, l2, dir, w, fill, C, spec, core, imgs) {
   const s = ikSolve(sx, sy, tx, ty, l1, l2, dir);
+  // image-skinned segments (per part); falls back to vectors where no image
+  if (imgs && (imgs.s1 || imgs.s2)) {
+    if (imgs.s1) boneImage(ctx, sx, sy, s.jx, s.jy, imgs.s1, imgs.far);
+    else segVector(ctx, sx, sy, s.jx, s.jy, w, fill, C, core, spec);
+    if (imgs.s2) boneImage(ctx, s.jx, s.jy, s.ex, s.ey, imgs.s2, imgs.far);
+    else segVector(ctx, s.jx, s.jy, s.ex, s.ey, w, fill, C, core, spec);
+    return s;
+  }
   if (spec.limb.style === 'plated') {
     platedSeg(ctx, sx, sy, s.jx, s.jy, w * 1.85, C, { fill, light: spec.light ?? -1 });
     platedSeg(ctx, s.jx, s.jy, s.ex, s.ey, w * 1.6, C, { fill, light: spec.light ?? -1 });
@@ -48,6 +108,18 @@ function drawLimb(ctx, sx, sy, tx, ty, l1, l2, dir, w, fill, C, spec, core) {
     if (jr > 0) disc(ctx, s.jx, s.jy, jr, fill, C.ink, 1.4);
   }
   return s;
+}
+
+// a single limb segment as vectors (used when only one of a limb's two segments
+// has an image assigned)
+function segVector(ctx, ax, ay, bx, by, w, fill, C, core, spec) {
+  if (spec.limb.style === 'plated') {
+    platedSeg(ctx, ax, ay, bx, by, w * 1.7, C, { fill, light: spec.light ?? -1 });
+    return;
+  }
+  const path = (c) => { c.moveTo(ax, ay); c.lineTo(bx, by); };
+  stroke2(ctx, path, w, fill, C.ink);
+  if (core) stroke2(ctx, path, Math.max(1, w * 0.34), col(C, core, fill), null, 0);
 }
 
 function drawHand(ctx, x, y, r, fill, C) {
@@ -169,14 +241,7 @@ export function buildDataRig(spec) {
       const st = A.st;
       const landK = st?.landK ?? 0;
 
-      // Dev pose-tuner hook: /dev/tuner.html sets globalThis.__RIG_TUNE__[id] to
-      // live slider values so the real engine renders WYSIWYG while you dial a
-      // pose in. Never set in production → all reads fall back to spec/defaults.
-      const tune = (typeof globalThis !== 'undefined' && globalThis.__RIG_TUNE__
-                    && globalThis.__RIG_TUNE__[spec.id]) || null;
-      const W = tune?.weapon
-        ? { ...(spec.weapon || { type: 'none' }), ...tune.weapon }
-        : (spec.weapon || { type: 'none' });
+      const W = spec.weapon || { type: 'none' };
 
       const limbCol = col(C, spec.limb?.color, C.primary);
       const backCol = shade(limbCol, 0.74);
@@ -198,11 +263,11 @@ export function buildDataRig(spec) {
       // the near/far limbs are separated mostly in depth, not screen width.
       // `depth` scales the frontal hip/shoulder width (1 = full front-on, 0 =
       // razor profile); ~0.55 reads as a confident 3/4 stance.
-      const depth = tune?.depth ?? spec.depth ?? 0.55;
+      const depth = spec.depth ?? 0.55;
       const hipW = (sk.hipW ?? 7) * depth;
       const shoulderXd = (sk.shoulderX ?? 9) * depth;
       // idle sinks into an athletic guard: hips drop a touch so the knees bend
-      const idleSettle = idle ? (tune?.settle ?? spec.idleSettle ?? 3) : 0;
+      const idleSettle = idle ? (spec.idleSettle ?? 3) : 0;
       // IDLE POSE — authored data (tune live in /dev/tuner.html, then bake into
       // spec.idlePose). All values are local units; the front hand/foot lead +x.
       const IP = {
@@ -210,7 +275,7 @@ export function buildDataRig(spec) {
         handX: 24, handY: 5, wrist: -0.5,            // sword hand + blade angle
         backHandX: 3, backHandY: 13, leanAdd: 0,     // off hand + forward lean
         shoulderAngle: 0,                            // roll of the shoulder line (bladed stance)
-        ...(spec.idlePose || {}), ...(tune?.idlePose || {}),
+        ...(spec.idlePose || {}),
       };
       const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
       const shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
@@ -357,29 +422,51 @@ export function buildDataRig(spec) {
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];
       if (!hB) hB = [-(sk.shoulderX ?? 9) * 1.5, shY + 12];          // resting counter-hand
 
+      // ── per-part images (character design): null where no image is assigned ──
+      const IMG = {
+        thigh: partImg(spec, 'thigh'), shin: partImg(spec, 'shin'),
+        upperArm: partImg(spec, 'upperArm'), foreArm: partImg(spec, 'foreArm'),
+        torso: partImg(spec, 'torso'), head: partImg(spec, 'head'),
+        hand: partImg(spec, 'hand'), foot: partImg(spec, 'foot'),
+        weapon: partImg(spec, 'weapon'),
+      };
+      const legImg = (f) => (IMG.thigh || IMG.shin) ? { s1: IMG.thigh, s2: IMG.shin, far: f } : null;
+      const armImg = (f) => (IMG.upperArm || IMG.foreArm) ? { s1: IMG.upperArm, s2: IMG.foreArm, far: f } : null;
+      const foot = (x, y, fill, far) => IMG.foot ? pointImage(ctx, x, y, IMG.foot, 24, 0, far) : drawFoot(ctx, x, y, fill, C, spec);
+      const hand = (x, y, fill, far) => IMG.hand ? pointImage(ctx, x, y, IMG.hand, handR * 3.2, 0, far) : drawHand(ctx, x, y, handR, fill, C);
+
       // ── draw order: back limbs → torso → head → front limbs + weapon → FX ────
       const bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
-                          sk.thigh, sk.shin, bend2, legW, backCol, C, spec, core);
-      drawFoot(ctx, bl.ex, bl.ey, backCol, C, spec);
-      const ba = drawLimb(ctx, shB[0], shB[1], hB[0], hB[1], sk.upper, sk.fore, armBendB, armW, backCol, C, spec, core);
-      drawHand(ctx, ba.ex, ba.ey, handR, backCol, C);
+                          sk.thigh, sk.shin, bend2, legW, backCol, C, spec, core, legImg(true));
+      foot(bl.ex, bl.ey, backCol, true);
+      const ba = drawLimb(ctx, shB[0], shB[1], hB[0], hB[1], sk.upper, sk.fore, armBendB, armW, backCol, C, spec, core, armImg(true));
+      hand(ba.ex, ba.ey, backCol, true);
 
-      drawTorso(ctx, hipX, hipY, shY, C, spec);
-      drawHead(ctx, lean * 4, headY, C, A, spec);
+      if (IMG.torso) boneImage(ctx, hipX, hipY, 0, shY, IMG.torso, false);
+      else drawTorso(ctx, hipX, hipY, shY, C, spec);
+      if (IMG.head) pointImage(ctx, lean * 4, headY, IMG.head, headR * 2.3, 0, false);
+      else drawHead(ctx, lean * 4, headY, C, A, spec);
 
       const fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
-                          sk.thigh, sk.shin, bend1, legW, limbCol, C, spec, core);
-      drawFoot(ctx, fl.ex, fl.ey, limbCol, C, spec);
+                          sk.thigh, sk.shin, bend1, legW, limbCol, C, spec, core, legImg(false));
+      foot(fl.ex, fl.ey, limbCol, false);
 
-      const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper, sk.fore, armBendF, armW, limbCol, C, spec, core);
-      if (weaponOut) {
+      const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper, sk.fore, armBendF, armW, limbCol, C, spec, core, armImg(false));
+      if (weaponOut || IMG.weapon) {
         ctx.save();
         ctx.translate(fa.ex, fa.ey);
         ctx.rotate(wA);
-        drawWeapon(ctx, C, W, hot);
+        if (IMG.weapon) {
+          const P = IMG.weapon, [iw, ih] = imgDim(P.img);
+          ctx.translate(P.ox, P.oy); ctx.rotate(P.rot);
+          const s = ((W.length ?? 56) / iw) * P.scale;
+          ctx.scale(s, s); ctx.drawImage(P.img, 0, -ih / 2);   // grip at the hand, blade ahead
+        } else {
+          drawWeapon(ctx, C, W, hot);
+        }
         ctx.restore();
       }
-      drawHand(ctx, fa.ex, fa.ey, handR, limbCol, C);
+      hand(fa.ex, fa.ey, limbCol, false);
 
       // ── move FX (signature beats) ────────────────────────────────────────────
       if (M && M.ph === 'hit') {

@@ -104,4 +104,11 @@ export const templateSpec = {
   // ── projectile look for neutral-B shots (optional) ────────────────────────
   // omit to use the engine's default energy bolt (tinted by your colors).
   projectile: { shape: 'slash' },   // 'slash' (crescent) — extend in runtime.js
+
+  // ── image-skinned body parts (optional; assign in /dev/tuner.html) ────────
+  // Each part follows its rigged bone. Parts not listed stay vector.
+  // head, torso, upperArm, foreArm, thigh, shin, hand, foot, weapon.
+  images: {
+    // torso: { src: '/assets/chars/mychar/torso.png', scale: 1, ox: 0, oy: 0, rot: 0 },
+  },
 };

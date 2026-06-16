@@ -1,7 +1,7 @@
 # ⚔ RIFTBRAWL
 
 A browser-native platform fighter in the spirit of Super Smash Bros — 60Hz
-realtime multiplayer, percent-based knockback, 3-stock deathmatches, six
+realtime multiplayer, percent-based knockback, 3-stock deathmatches, five
 legends, one beautiful floating arena.
 
 ![stack](https://img.shields.io/badge/stack-vanilla%20ESM%20%2B%20node-blueviolet)
@@ -70,10 +70,10 @@ tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
 | **EMBER** | The Cinder Witch | space control with wildfire orbs |
 | **TIDE** | The Wave Duelist | the honest all-rounder, deadly at every range |
 | **NOVA** | The Void Sentinel | floaty cosmic drift, enormous hits |
-| **REED** | The Blank Slate | a clean sword fencer, dead-average everything |
 
-REED is also the reference **data rig** — a fully-animated character described as
-pure data instead of bespoke draw code. See *Custom characters* below.
+A sixth fighter, **REED** "The Blank Slate", is the reference **data rig** — a
+fully-animated stick fencer described as pure data. It isn't in the roster; it's
+the base the character designer builds new fighters from. See *Custom characters*.
 
 ### Controls
 
@@ -138,9 +138,11 @@ the spec is presentation only.
 - **Art template**: open `/dev/rig.html` — the **rig map**: a labelled rest
   skeleton on a measured grid to draw your design over, plus the live rig in
   motion. `/dev/poses.html` shows every state of every character on one sheet.
-- **Pose tuner**: open `/dev/tuner.html` — drive the real rig with sliders
-  (stance, sword hold, depth) over an optional reference photo, then copy the
-  exact spec values. Profile poses are authored data, not guesswork.
+- **Character designer**: open `/dev/tuner.html` — builds on the REED base in
+  the real engine. **Skin body parts with images** (head/torso/limbs/hand/foot/
+  weapon — each follows its rigged bone), dial the stance + sword hold over an
+  optional reference photo, zoom the preview, then **Export** a complete new
+  `<id>.rig.js`. Poses and part transforms are authored data, not guesswork.
 
 Pipeline: *draw on the rig map → fill in a spec → register it in `fighters.js`.*
 

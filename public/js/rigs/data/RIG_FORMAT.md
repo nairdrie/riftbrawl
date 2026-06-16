@@ -47,13 +47,32 @@ moves), not facing the camera. Two consequences the format bakes in:
   `idlePose`), not magic numbers — so you can dial them in by eye instead of
   guessing coordinates.
 
-**Use the Pose Tuner — `/dev/tuner.html`.** It renders the *real* engine and
-gives you sliders for the whole idle stance (foot stagger, hip sink, lead-hand
-position, blade angle, off-hand, lean) and the weapon dimensions. You can drop a
-**reference photo/drawing behind the rig** and match it. When it looks right, hit
-**Copy spec** and paste the block into your `.rig.js` (`depth`, `idleSettle`,
-`idlePose`, `weapon`). This is the intended loop for getting hands and stances
-*correct* rather than approximate.
+**Use the Character Designer — `/dev/tuner.html`.** It renders the *real* engine
+and builds on the REED base. Sliders cover the whole idle stance (foot stagger,
+hip sink, shoulder angle, lead-hand position, blade angle, off-hand, lean) and the
+weapon. You can drop a **reference photo behind the rig** and match it, zoom the
+preview, then **Export** a complete `<id>.rig.js`. This is the intended loop for
+getting stances *correct* rather than approximate.
+
+## Image-skinned body parts (character design)
+
+You don't have to draw in code. Assign an **image to each body part** and it's
+drawn following that part's rigged bone, so it animates with the skeleton. In the
+designer pick a part (`head`, `torso`, `upperArm`, `foreArm`, `thigh`, `shin`,
+`hand`, `foot`, `weapon`), load a PNG, and nudge its scale/offset/rotation. Each
+becomes an `images` entry:
+
+```js
+images: {
+  torso: { src: '/assets/chars/myhero/torso.png', scale: 1, ox: 0, oy: 0, rot: 0 },
+  // …per part. Parts with no entry fall back to the vector stick figure.
+}
+```
+
+Notes: art is **side-view, facing right**; limb images should run left→right
+*along the bone* (the left edge anchors at the joint). Arms/legs reuse one image
+for the near and far side (the far side is auto-dimmed). On export, the designer
+writes predictable paths (`/assets/chars/<id>/<part>.png`) — save your PNGs there.
 
 ## Anatomy of a spec
 
@@ -68,6 +87,7 @@ example (the stick fencer REED). The shape:
 | `cloth` | Optional verlet ribbons (capes, scarves) that trail as you move. |
 | `weapon` | The thing in the front hand (`sword`/`staff`/`none`) — length, colors, one/two-handed, idle carry. |
 | `projectile` | The look of this character's neutral-B shot (optional; defaults to a tinted bolt). |
+| `images` | Optional per-part images (`head`/`torso`/`upperArm`/`foreArm`/`thigh`/`shin`/`hand`/`foot`/`weapon`) — each skins its bone. Replaces the vectors for that part. |
 
 Everything is JSON-able and every field has a default, so a minimal spec (`{}`)
 still draws a valid figure. Colors are palette keys — `primary`, `secondary`,
