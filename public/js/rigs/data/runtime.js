@@ -37,6 +37,11 @@ function lerpPose(a, b, t) {
   }
   const at = a?.twoHand, bt = b?.twoHand;
   if (at != null || bt != null) o.twoHand = t < 0.5 ? (at ?? bt) : (bt ?? at);
+  // bend directions are discrete (±1) — snap, don't interpolate
+  for (const f of ['elbowFront', 'elbowBack', 'kneeFront', 'kneeBack']) {
+    const av = a?.[f], bv = b?.[f];
+    if (av != null || bv != null) o[f] = t < 0.5 ? (av ?? bv) : (bv ?? av);
+  }
   return o;
 }
 
@@ -87,6 +92,29 @@ function partImg(spec, name) {
   const img = resolveImg(conf.src);
   if (!img) return null;
   return { img, scale: conf.scale ?? 1, ox: conf.ox ?? 0, oy: conf.oy ?? 0, rot: conf.rot ?? 0 };
+}
+// ── pose-handle capture (designer drag editing) ─────────────────────────────
+// When a collector is registered, each draw records the screen positions of the
+// end-effectors (hands/feet) and joints (elbows/knees) plus the local→device
+// matrix, so the designer can hit-test handles and map drags back to pose fields.
+let CAPTURE = null;
+export function poseCapture(o) { CAPTURE = o; }
+function captureHandles(ctx, { fa, ba, fl, bl, shY, legsNone }) {
+  const M = ctx.getTransform();
+  const P = (x, y) => ({ x: M.a * x + M.c * y + M.e, y: M.b * x + M.d * y + M.f });
+  CAPTURE.m = M; CAPTURE.shY = shY; CAPTURE.legsNone = legsNone;
+  CAPTURE.pts = {
+    hF: { ...P(fa.ex, fa.ey), role: 'hand', side: 'F' },
+    hB: { ...P(ba.ex, ba.ey), role: 'hand', side: 'B' },
+    eF: { ...P(fa.jx, fa.jy), role: 'elbow', side: 'F' },
+    eB: { ...P(ba.jx, ba.jy), role: 'elbow', side: 'B' },
+  };
+  if (!legsNone && fl && bl) Object.assign(CAPTURE.pts, {
+    ftF: { ...P(fl.ex, fl.ey), role: 'foot', side: 'F' },
+    ftB: { ...P(bl.ex, bl.ey), role: 'foot', side: 'B' },
+    kF: { ...P(fl.jx, fl.jy), role: 'knee', side: 'F' },
+    kB: { ...P(bl.jx, bl.jy), role: 'knee', side: 'B' },
+  });
 }
 // per-part width/length multipliers (apply to vector AND image; default 1). Stored
 // in spec.images[name] so a part can be scaled even with no image assigned.
@@ -469,7 +497,10 @@ export function buildDataRig(spec) {
       if (OVR) {
         if (OVR.leadFootX != null) f1 = [OVR.leadFootX, OVR.leadFootY ?? 0];
         if (OVR.rearFootX != null) f2 = [OVR.rearFootX, OVR.rearFootY ?? 0];
+        if (OVR.kneeFront != null) bend1 = OVR.kneeFront;
+        if (OVR.kneeBack != null) bend2 = OVR.kneeBack;
       }
+      if (idle) { if (IP.kneeFront != null) bend1 = IP.kneeFront; if (IP.kneeBack != null) bend2 = IP.kneeBack; }
 
       // ── hand targets + wrist angle ───────────────────────────────────────────
       // far shoulder rides a touch higher (foreshortening) for the 3/4 read
@@ -547,6 +578,9 @@ export function buildDataRig(spec) {
       if (OVR && OVR.backHandX != null) hB = [OVR.backHandX, shY + (OVR.backHandY ?? 0)];
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];
       if (!hB) hB = [-(sk.shoulderX ?? 9) * 1.5, shY + 12];          // resting counter-hand
+      // pose-authored elbow bend directions (click-to-flip in the designer)
+      if (OVR) { if (OVR.elbowFront != null) armBendF = OVR.elbowFront; if (OVR.elbowBack != null) armBendB = OVR.elbowBack; }
+      if (idle) { if (IP.elbowFront != null) armBendF = IP.elbowFront; if (IP.elbowBack != null) armBendB = IP.elbowBack; }
 
       // ── per-part images (character design): null where no image is assigned ──
       const IMG = {
@@ -567,9 +601,10 @@ export function buildDataRig(spec) {
       const hand = (x, y, fill, far) => withScale(ctx, x, y, Pha.w, Pha.len, () => IMG.hand ? pointImage(ctx, x, y, IMG.hand, handR * 3.2, 0, far) : drawHand(ctx, x, y, handR, fill, C));
 
       // ── draw order: back limbs/tail → torso → head → front limbs + weapons ──
+      let fl = null, bl = null;
       if (legsNone) drawTail(ctx, p, char, st, spec, hipX, hipY, C);
       else {
-        const bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
+        bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
                             sk.thigh * Pth.len, sk.shin * Psh.len, bend2, legW * Pth.w, legW * Psh.w, backCol, C, spec, core, legImg(true));
         foot(bl.ex, bl.ey, backCol, true);
       }
@@ -591,12 +626,13 @@ export function buildDataRig(spec) {
       });
 
       if (!legsNone) {
-        const fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
+        fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
                             sk.thigh * Pth.len, sk.shin * Psh.len, bend1, legW * Pth.w, legW * Psh.w, limbCol, C, spec, core, legImg(false));
         foot(fl.ex, fl.ey, limbCol, false);
       }
 
       const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper * Pup.len, sk.fore * Pfo.len, armBendF, armW * Pup.w, armW * Pfo.w, limbCol, C, spec, core, armImg(false));
+      if (CAPTURE) captureHandles(ctx, { fa, ba, fl, bl, shY, legsNone });
       for (const wp of weapons) if (wp.hand !== 'back') {
         ctx.save(); ctx.translate(fa.ex, fa.ey); ctx.rotate(wA + (wp.angle || 0)); ctx.scale(Pwp.len, Pwp.w); drawWeapon(ctx, C, wp, hot); ctx.restore();
       }

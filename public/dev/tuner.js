@@ -12,6 +12,7 @@ import { ACT, PHASE, MS_PER_TICK } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { drawFighter, getDataSpec, setRig, buildSpecRig } from '/js/fighters.js';
 import { reedSpec } from '/js/rigs/data/reed.rig.js';
+import { poseCapture } from '/js/rigs/data/runtime.js';
 import { Renderer } from '/js/renderer.js';
 import { sampleInput } from '/js/input.js';
 
@@ -313,6 +314,86 @@ $('mode').addEventListener('click', () => {
   layout();
 });
 
+// ── direct manipulation: drag hands/feet, click joints to flip the bend ──────
+const cap = {};            // filled by the runtime each draw (handle screen pos)
+poseCapture(cap);
+window.__tunerCap = cap;   // dev affordance (handle positions for debugging)
+let drag = null;           // active end-effector being dragged
+const r2 = (v) => Math.round(v * 10) / 10;
+
+function drawHandles(ctx) {
+  if (!editable || !cap.pts) return;
+  const dpr = devicePixelRatio;
+  ctx.save();
+  ctx.lineWidth = 2;
+  for (const key in cap.pts) {
+    const h = cap.pts[key], x = h.x / dpr, y = h.y / dpr;
+    const end = h.role === 'hand' || h.role === 'foot';
+    ctx.beginPath(); ctx.arc(x, y, end ? 7 : 5.5, 0, Math.PI * 2);
+    if (end) {                       // draggable target
+      ctx.fillStyle = drag && drag.key === key ? '#ffce3f' : 'rgba(126,196,255,0.92)';
+      ctx.fill(); ctx.strokeStyle = '#0b1020'; ctx.stroke();
+    } else {                         // joint — click to flip the elbow/knee bend
+      ctx.strokeStyle = '#ff9a3d'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, 1.6, 0, Math.PI * 2); ctx.fillStyle = '#ff9a3d'; ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+function handleAt(mx, my) {          // mx,my in CSS canvas coords
+  const dpr = devicePixelRatio; let best = null, bd = 13;
+  for (const key in (cap.pts || {})) {
+    const h = cap.pts[key], d = Math.hypot(mx - h.x / dpr, my - h.y / dpr);
+    if (d < bd) { bd = d; best = { key, ...h }; }
+  }
+  return best;
+}
+function mouseLocal(e) {              // → inner rig-frame coords
+  const rect = c.getBoundingClientRect(), dpr = devicePixelRatio;
+  const pt = cap.m.inverse().transformPoint(new DOMPoint((e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr));
+  return { x: pt.x, y: pt.y };
+}
+// where drag/flip writes: the idle pose, or the authored target for the state
+function poseTarget() {
+  if (!editable) return null;
+  if (aState.value === 'idle') return { obj: (workingSpec.idlePose ||= {}), idle: true };
+  const t = ensureTarget(); return t ? { obj: t, idle: false } : null;
+}
+function applyDrag(h, loc) {
+  const T = poseTarget(); if (!T) return; const o = T.obj, shY = cap.shY;
+  if (h.role === 'hand') {
+    if (h.side === 'F') { o.handX = r2(loc.x); o.handY = r2(loc.y - shY); }
+    else { o.backHandX = r2(loc.x); o.backHandY = r2(loc.y - shY); }
+  } else {                           // foot
+    if (T.idle) { if (h.side === 'F') o.leadFoot = r2(loc.x); else o.rearFoot = r2(loc.x); }
+    else if (h.side === 'F') { o.leadFootX = r2(loc.x); o.leadFootY = r2(loc.y); }
+    else { o.rearFootX = r2(loc.x); o.rearFootY = r2(loc.y); }
+  }
+}
+function flipJoint(h) {
+  const T = poseTarget(); if (!T) return; const o = T.obj;
+  const f = h.role === 'elbow' ? (h.side === 'F' ? 'elbowFront' : 'elbowBack')
+                               : (h.side === 'F' ? 'kneeFront' : 'kneeBack');
+  const def = h.role === 'elbow' ? (h.side === 'F' ? (T.idle ? 1 : -1) : 1) : -1;
+  o[f] = -(o[f] ?? def);
+  refreshPoseUI();
+}
+function refreshPoseUI() {
+  if (aState.value === 'idle') { for (const [, path] of POSE) ctl[path]?.set(getPath(workingSpec, path) ?? 0); }
+  else if (typeof syncAPose === 'function') syncAPose();
+}
+c.addEventListener('mousedown', (e) => {
+  if (mode === 'play' || !editable || !cap.pts) return;
+  const rect = c.getBoundingClientRect();
+  const h = handleAt(e.clientX - rect.left, e.clientY - rect.top);
+  if (!h) return;
+  e.preventDefault();
+  if (h.role === 'hand' || h.role === 'foot') drag = h;
+  else flipJoint(h);
+});
+window.addEventListener('mousemove', (e) => { if (drag) applyDrag(drag, mouseLocal(e)); });
+window.addEventListener('mouseup', () => { if (drag) { drag = null; refreshPoseUI(); } });
+
 // ── render loop ─────────────────────────────────────────────────────────────
 const fakeIdle = (facing) => ({ charId: selId, idx: 0, uid: 'design', facing, grounded: true, vx: 0, vy: 0, percent: 0,
   act: ACT.FREE, actFrame: 0, moveId: '', stun: 0, hitlag: 0, shield: 60, invuln: 0, jumpsLeft: 1, fastFalling: false, charge: 0, x: 0, y: 0, lastIn: { b: 0, x: 0, y: 0 } });
@@ -359,6 +440,7 @@ function frame(now) {
     workingSpec.images = saved;
   }
   drawAt(tt);
+  drawHandles(ctx);
   $('out').textContent = exportText();
   requestAnimationFrame(frame);
 }
