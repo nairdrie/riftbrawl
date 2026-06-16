@@ -103,6 +103,12 @@ function partImg(spec, name) {
 // matrix, so the designer can hit-test handles and map drags back to pose fields.
 let CAPTURE = null;
 export function poseCapture(o) { CAPTURE = o; }
+// Designer authoring flag. When true (drag-to-pose, paused), authored targets sit
+// exactly where dragged so editing is WYSIWYG. When false (gameplay + the loop
+// preview), authored targets for cyclic states (run) ride ON TOP of the procedural
+// motion so the limb keeps animating instead of freezing at the authored pose.
+let AUTHORING = false;
+export function setAuthoring(v) { AUTHORING = !!v; }
 function captureHandles(ctx, { fa, ba, fl, bl, shY, legsNone }) {
   const M = ctx.getTransform();
   const P = (x, y) => ({ x: M.a * x + M.c * y + M.e, y: M.b * x + M.d * y + M.f });
@@ -553,8 +559,12 @@ export function buildDataRig(spec) {
       }
       if (A.crouch > 0.3) { f1[0] += 4; f2[0] -= 4; }
       if (OVR) {
-        if (OVR.leadFootX != null) f1 = [OVR.leadFootX, OVR.leadFootY ?? 0];
-        if (OVR.rearFootX != null) f2 = [OVR.rearFootX, OVR.rearFootY ?? 0];
+        // authored feet ride on top of the run cycle during play (so the stride
+        // keeps going), but pin exactly when authoring so drag stays WYSIWYG
+        const cyc = (!AUTHORING && A.runAmt > 0.05 && !A.airborne);
+        const c1x = cyc ? f1[0] : 0, c1y = cyc ? f1[1] : 0, c2x = cyc ? f2[0] : 0, c2y = cyc ? f2[1] : 0;
+        if (OVR.leadFootX != null) f1 = [OVR.leadFootX + c1x, (OVR.leadFootY ?? 0) + c1y];
+        if (OVR.rearFootX != null) f2 = [OVR.rearFootX + c2x, (OVR.rearFootY ?? 0) + c2y];
         if (OVR.kneeFront != null) bend1 = OVR.kneeFront;
         if (OVR.kneeBack != null) bend2 = OVR.kneeBack;
       }

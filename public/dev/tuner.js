@@ -12,7 +12,7 @@ import { ACT, PHASE, MS_PER_TICK } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { drawFighter, getDataSpec, setRig, buildSpecRig } from '/js/fighters.js';
 import { reedSpec } from '/js/rigs/data/reed.rig.js';
-import { poseCapture, getPartDraw } from '/js/rigs/data/runtime.js';
+import { poseCapture, getPartDraw, setAuthoring } from '/js/rigs/data/runtime.js';
 import { openPainter } from '/dev/painter.js';
 import { Renderer } from '/js/renderer.js';
 import { sampleInput } from '/js/input.js';
@@ -462,6 +462,9 @@ const fakeIdle = (facing) => ({ charId: selId, idx: 0, uid: 'design', facing, gr
 let last = performance.now(), acc = 0;
 function frame(now) {
   const dtMs = Math.max(0, Math.min(100, now - last)); last = now;
+  // pin authored targets only while paused-editing (WYSIWYG drag); let them ride
+  // the procedural motion while looping or in the sim so limbs keep animating.
+  setAuthoring(mode === 'edit' && !previewPlay);
   if (mode === 'play' && renderer && sim) {
     // fixed 60Hz timestep — rAF can fire at 120/144Hz, so stepping once per
     // frame would run the sim 2–2.4× too fast. Accumulate and step in ticks,
