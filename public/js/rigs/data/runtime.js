@@ -525,6 +525,7 @@ export function buildDataRig(spec) {
         hF = [14, shY + 7 - A.rise * 4]; hB = [-13, shY + 10]; wA = -0.6 + A.fall * 0.5; twoHand = false;
       } else if (A.runAmt > 0.05) {
         hF = [11, shY + 8]; hB = [-9 - Math.sin(A.runPhase) * 5 * A.runAmt, shY + 14]; wA = -2.35; twoHand = false;
+        armBendF = 1;                              // elbow drops down/back, not up
       } else {
         // idle: a side-on guard from authored IP data. lead hand up + out front
         // with the blade angled forward (folded arm drops the elbow into guard);
