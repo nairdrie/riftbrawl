@@ -62,6 +62,10 @@ function stateKey(p, A) {
   return 'idle';
 }
 
+// crossfade key: each attack is its own key (so phase interpolation plays through
+// untouched, but entering/leaving the move blends); otherwise the state key.
+function poseKey(p, A, M) { return M ? 'm:' + M.id : stateKey(p, A); }
+
 
 // Resolve a color "token" from a spec: a palette key (primary/secondary/accent/
 // glow/trail/ink/priD/priL/secD/secL/accD) or a literal #hex. Falls back safely.
@@ -355,6 +359,20 @@ export function buildDataRig(spec) {
     draw(ctx, p, char, A, t) {
       const C = palette(char.colors);
       const M = A.move;
+
+      // ── transition crossfade ───────────────────────────────────────────────
+      // The pose for each state is computed below; when the STATE changes (idle→
+      // run, move start/end, crouch, hit…) we crossfade the whole pose vector from
+      // the last displayed pose to the new one over `blendTime` so nothing pops.
+      // Within a state the key is constant → passthrough, so cycles play normally.
+      const PB = A.st;
+      const pkey = poseKey(p, A, M);
+      if (PB._pk !== pkey) { PB._psrc = PB._pdisp || null; PB._pt = PB._psrc ? 0 : 1; PB._pk = pkey; }
+      else PB._pt = Math.min(1, (PB._pt ?? 1) + (PB.dt || 1 / 60) / (spec.blendTime ?? 0.085));
+      const _bl = !!PB._psrc && PB._pt < 1, _bt = _bl ? easeOut(PB._pt) : 1;
+      const mixN = (k, v) => _bl ? PB._psrc[k] + (v - PB._psrc[k]) * _bt : v;       // scalar
+      const mixV = (k, v) => _bl ? [PB._psrc[k][0] + (v[0] - PB._psrc[k][0]) * _bt, PB._psrc[k][1] + (v[1] - PB._psrc[k][1]) * _bt] : v;  // [x,y]
+      const mixD = (k, v) => _bl && _bt < 0.5 ? PB._psrc[k] : v;                    // discrete (hold to midpoint)
       const st = A.st;
       const landK = st?.landK ?? 0;
 
@@ -400,9 +418,10 @@ export function buildDataRig(spec) {
         shoulderAngle: 0,                            // roll of the shoulder line (bladed stance)
         ...(spec.idlePose || {}),
       };
-      const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
-      const shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
-      const headY = sk.headY + crouchDrop * 1.1 + idleSettle + breathY * 1.2 + stepBob;
+      let hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
+      let shY = sk.shoulderY + crouchDrop * 1.05 + idleSettle + breathY + stepBob;
+      let headY = sk.headY + crouchDrop * 1.1 + idleSettle + breathY * 1.2 + stepBob;
+      hipY = mixN('hipY', hipY); shY = mixN('shY', shY); headY = mixN('headY', headY);  // crossfade vertical
       const headR = sk.headR;
 
       // lean (shoulders) + lunge (step-in), per state
@@ -440,6 +459,7 @@ export function buildDataRig(spec) {
         }
       }
       if (OVR) { if (OVR.lean != null) lean = OVR.lean; if (OVR.lunge != null) lunge = OVR.lunge; }
+      lean = mixN('lean', lean); lunge = mixN('lunge', lunge);          // crossfade body tilt/shift
 
       // ── cloth anchors (world → verlet → local) ───────────────────────────────
       const clothPts = [];
@@ -508,7 +528,8 @@ export function buildDataRig(spec) {
       let shF = [shoulderXd, shY + 3], shB = [-shoulderXd, shY + 2 - farLift];
       // shoulder angle: roll the shoulder line about the neck base so the lead
       // shoulder leads into the guard. From the authored pose, else idle's value.
-      const shAng = OVR?.shoulderAngle != null ? OVR.shoulderAngle : (idle ? IP.shoulderAngle : 0);
+      let shAng = OVR?.shoulderAngle != null ? OVR.shoulderAngle : (idle ? IP.shoulderAngle : 0);
+      shAng = mixN('shAng', shAng);
       if (shAng) {
         const ca = Math.cos(shAng), sa = Math.sin(shAng);
         const roll = ([x, y]) => { const dy = y - shY; return [x * ca - dy * sa, shY + x * sa + dy * ca]; };
@@ -581,6 +602,14 @@ export function buildDataRig(spec) {
       // pose-authored elbow bend directions (click-to-flip in the designer)
       if (OVR) { if (OVR.elbowFront != null) armBendF = OVR.elbowFront; if (OVR.elbowBack != null) armBendB = OVR.elbowBack; }
       if (idle) { if (IP.elbowFront != null) armBendF = IP.elbowFront; if (IP.elbowBack != null) armBendB = IP.elbowBack; }
+
+      // crossfade the limb targets + bends, then remember this frame's pose as the
+      // source for the next transition's blend.
+      f1 = mixV('f1', f1); f2 = mixV('f2', f2); hF = mixV('hF', hF); hB = mixV('hB', hB); wA = mixN('wA', wA);
+      armBendF = mixD('armBendF', armBendF); armBendB = mixD('armBendB', armBendB);
+      bend1 = mixD('bend1', bend1); bend2 = mixD('bend2', bend2);
+      PB._pdisp = { hipY, shY, headY, shAng, lean, lunge, wA, armBendF, armBendB, bend1, bend2,
+        f1: [f1[0], f1[1]], f2: [f2[0], f2[1]], hF: [hF[0], hF[1]], hB: [hB[0], hB[1]] };
 
       // ── per-part images (character design): null where no image is assigned ──
       const IMG = {
