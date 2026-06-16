@@ -16,7 +16,7 @@
 
 import { NB_CHARGE, ACT } from '/shared/constants.js';
 import {
-  TAU, lerp, clamp01, easeOut, easeOutBack, shade, palette, paint, ink, disc, poly, stroke2,
+  TAU, lerp, clamp01, easeOut, easeOutBack, shade, palette, paint, ink, disc, poly, roundRect, stroke2,
   ikSolve, platedSeg, jointCap, glowOn, glowOff,
   chain, chainLocal, ribbon, swingTrail, chargeOrb, dizzyStars, face,
 } from '../common.js';
@@ -232,11 +232,19 @@ function drawHead(ctx, hx, hy, C, A, spec) {
   }
 }
 
-// The held weapon, drawn from the grip (origin) outward along +x. Supported
-// types keep the importer honest: 'sword' (default), 'staff', 'none'.
+// The held weapon, drawn from the grip (origin) outward along +x. Types:
+// 'sword' (default), 'dagger', 'staff', 'hammer', 'none'. A weapon may instead
+// carry an image (`src`), drawn grip-anchored along +x.
 function drawWeapon(ctx, C, w, hot) {
   if (!w || w.type === 'none') return;
-  const len = w.length ?? 56, gw = w.width ?? 6, grip = w.grip ?? 9;
+  if (w.src) {                       // image weapon
+    const img = resolveImg(w.src); if (!img) return;
+    const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    ctx.save(); ctx.rotate((w.rot || 0)); ctx.translate(w.ox || 0, w.oy || 0);
+    const s = ((w.length ?? 56) / iw) * (w.scale ?? 1); ctx.scale(s, s);
+    ctx.drawImage(img, w.grip ? -w.grip / s : 0, -ih / 2); ctx.restore(); return;
+  }
+  const len = w.length ?? (w.type === 'dagger' ? 26 : 56), gw = w.width ?? 6, grip = w.grip ?? 9;
   const blade = col(C, w.color, C.primary);
   const edge = col(C, w.edge, C.glow);
   const guard = col(C, w.guard, C.accent);
@@ -248,7 +256,22 @@ function drawWeapon(ctx, C, w, hot) {
     glowOff(ctx);
     return;
   }
-  // sword — handle behind the grip, crossguard at the grip, tapered blade ahead
+  if (w.type === 'hammer') {
+    // long banded haft + a heavy rune-forged head near the far end
+    const hx = len * 0.86;
+    stroke2(ctx, c => { c.moveTo(-grip, 0); c.lineTo(hx, 0); }, gw * 0.7, shade(blade, 0.8), C.ink);
+    ink(ctx, guard, 1.8);
+    for (let i = 0; i < 3; i++) { const bx = lerp(-grip + 6, hx - 6, i / 2); ctx.beginPath(); ctx.moveTo(bx, -gw * 0.5); ctx.lineTo(bx, gw * 0.5); ctx.stroke(); }
+    disc(ctx, -grip, 0, gw * 0.5, guard, C.ink, 1.4);                 // pommel
+    glowOn(ctx, edge, hot ? 16 : 7);
+    roundRect(ctx, hx - gw * 0.6, -gw * 2.2, gw * 3.0, gw * 4.4, gw * 0.7);  // head block
+    paint(ctx, blade, C.ink, 2.6);
+    glowOff(ctx);
+    roundRect(ctx, hx - gw * 0.6, gw * 0.2, gw * 3.0, gw * 2.0, gw * 0.5); paint(ctx, shade(blade, 0.74), null);
+    ink(ctx, edge, 1.6); ctx.beginPath(); ctx.moveTo(hx - gw * 0.4, -gw * 2.0); ctx.lineTo(hx + gw * 2.2, -gw * 2.0); ctx.stroke();
+    return;
+  }
+  // sword / dagger — handle behind the grip, crossguard, tapered blade ahead
   stroke2(ctx, c => { c.moveTo(-grip, 0); c.lineTo(-1, 0); }, 4.2, C.secD, C.ink, 2.2);
   disc(ctx, -grip, 0, 2.6, guard, C.ink, 1.4);                       // pommel
   stroke2(ctx, c => { c.moveTo(0, -gw * 0.95); c.lineTo(0, gw * 0.95); }, 3.4, guard, C.ink, 2);  // crossguard
@@ -260,6 +283,22 @@ function drawWeapon(ctx, C, w, hot) {
   ctx.beginPath(); ctx.moveTo(3, 0); ctx.lineTo(len - 10, 0); ctx.stroke();
   ink(ctx, edge, 1.3);                                               // lit edge
   ctx.beginPath(); ctx.moveTo(4, -gw * 0.42); ctx.lineTo(len - 12, -gw * 0.24); ctx.stroke();
+}
+
+// A floaty tail in place of legs (NOVA-class). A verlet chain from the hip so it
+// trails as the body drifts; tapered ribbon with a glowing tip.
+function drawTail(ctx, p, char, st, spec, hipX, hipY, C) {
+  const T = spec.tail || {};
+  const ax = p.x + hipX * p.facing * char.scale, ay = p.y + hipY * char.scale;
+  const pts = chainLocal(
+    chain(st, 'tail', T.n ?? 5, (T.seg ?? 12) * char.scale, ax, ay,
+          { damp: T.damp ?? 0.9, grav: T.grav ?? 60, windX: -p.facing * (T.windX ?? 16) }),
+    p, char.scale);
+  ribbon(ctx, pts, T.w0 ?? 16, T.w1 ?? 3, col(C, T.color, C.secondary), C.ink, 2.4);
+  const tip = pts[pts.length - 1];
+  glowOn(ctx, col(C, T.glow, C.glow), 12);
+  disc(ctx, tip[0], tip[1], (T.w1 ?? 3) + 1.5, col(C, T.tipColor, C.glow), null);
+  glowOff(ctx);
 }
 
 // ── the interpreter ──────────────────────────────────────────────────────────
@@ -279,6 +318,9 @@ export function buildDataRig(spec) {
       const landK = st?.landK ?? 0;
 
       const W = spec.weapon || { type: 'none' };
+      const legsNone = spec.legs === 'none';
+      // weapons: explicit array (single or dual wield) or the legacy single weapon
+      const weapons = spec.weapons || (W.type !== 'none' || W.src ? [{ hand: 'front', ...W }] : []);
 
       const limbCol = col(C, spec.limb?.color, C.primary);
       const backCol = shade(limbCol, 0.74);
@@ -425,7 +467,7 @@ export function buildDataRig(spec) {
         const roll = ([x, y]) => { const dy = y - shY; return [x * ca - dy * sa, shY + x * sa + dy * ca]; };
         shF = roll(shF); shB = roll(shB);
       }
-      let hF, hB, wA = 0.9, twoHand = !!W.twoHand, hot = false, weaponOut = W.type !== 'none';
+      let hF, hB, wA = 0.9, twoHand = !!W.twoHand, hot = false;
       // elbow bend directions (pose-aware, not camera-facing constants): +1 drops
       // the elbow down, -1 lifts it. Defaults suit the swings; idle overrides.
       let armBendF = -1, armBendB = 1;
@@ -502,11 +544,18 @@ export function buildDataRig(spec) {
       const foot = (x, y, fill, far) => IMG.foot ? pointImage(ctx, x, y, IMG.foot, 24, 0, far) : drawFoot(ctx, x, y, fill, C, spec);
       const hand = (x, y, fill, far) => IMG.hand ? pointImage(ctx, x, y, IMG.hand, handR * 3.2, 0, far) : drawHand(ctx, x, y, handR, fill, C);
 
-      // ── draw order: back limbs → torso → head → front limbs + weapon → FX ────
-      const bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
-                          sk.thigh, sk.shin, bend2, legW, backCol, C, spec, core, legImg(true));
-      foot(bl.ex, bl.ey, backCol, true);
+      // ── draw order: back limbs/tail → torso → head → front limbs + weapons ──
+      if (legsNone) drawTail(ctx, p, char, st, spec, hipX, hipY, C);
+      else {
+        const bl = drawLimb(ctx, hipX - hipW, hipY - farLift, f2[0], f2[1] - 3,
+                            sk.thigh, sk.shin, bend2, legW, backCol, C, spec, core, legImg(true));
+        foot(bl.ex, bl.ey, backCol, true);
+      }
       const ba = drawLimb(ctx, shB[0], shB[1], hB[0], hB[1], sk.upper, sk.fore, armBendB, armW, backCol, C, spec, core, armImg(true));
+      const wAB = Math.atan2(ba.ey - ba.jy, ba.ex - ba.jx);     // back forearm direction
+      for (const wp of weapons) if (wp.hand === 'back') {
+        ctx.save(); ctx.translate(ba.ex, ba.ey); ctx.rotate(wAB + (wp.angle || 0)); drawWeapon(ctx, C, wp, hot); ctx.restore();
+      }
       hand(ba.ex, ba.ey, backCol, true);
 
       if (IMG.torso) boneImage(ctx, hipX, hipY, 0, shY, IMG.torso, false);
@@ -514,23 +563,21 @@ export function buildDataRig(spec) {
       if (IMG.head) pointImage(ctx, lean * 4, headY, IMG.head, headR * 2.3, 0, false);
       else drawHead(ctx, lean * 4, headY, C, A, spec);
 
-      const fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
-                          sk.thigh, sk.shin, bend1, legW, limbCol, C, spec, core, legImg(false));
-      foot(fl.ex, fl.ey, limbCol, false);
+      if (!legsNone) {
+        const fl = drawLimb(ctx, hipX + hipW, hipY, f1[0], f1[1] - 3,
+                            sk.thigh, sk.shin, bend1, legW, limbCol, C, spec, core, legImg(false));
+        foot(fl.ex, fl.ey, limbCol, false);
+      }
 
       const fa = drawLimb(ctx, shF[0], shF[1], hF[0], hF[1], sk.upper, sk.fore, armBendF, armW, limbCol, C, spec, core, armImg(false));
-      if (weaponOut || IMG.weapon) {
-        ctx.save();
-        ctx.translate(fa.ex, fa.ey);
-        ctx.rotate(wA);
-        if (IMG.weapon) {
-          const P = IMG.weapon, [iw, ih] = imgDim(P.img);
-          ctx.translate(P.ox, P.oy); ctx.rotate(P.rot);
-          const s = ((W.length ?? 56) / iw) * P.scale;
-          ctx.scale(s, s); ctx.drawImage(P.img, 0, -ih / 2);   // grip at the hand, blade ahead
-        } else {
-          drawWeapon(ctx, C, W, hot);
-        }
+      for (const wp of weapons) if (wp.hand !== 'back') {
+        ctx.save(); ctx.translate(fa.ex, fa.ey); ctx.rotate(wA + (wp.angle || 0)); drawWeapon(ctx, C, wp, hot); ctx.restore();
+      }
+      if (IMG.weapon) {            // image-skinned weapon part (front hand, legacy)
+        ctx.save(); ctx.translate(fa.ex, fa.ey); ctx.rotate(wA);
+        const P = IMG.weapon, [iw, ih] = imgDim(P.img);
+        ctx.translate(P.ox, P.oy); ctx.rotate(P.rot);
+        const s = ((W.length ?? 56) / iw) * P.scale; ctx.scale(s, s); ctx.drawImage(P.img, 0, -ih / 2);
         ctx.restore();
       }
       hand(fa.ex, fa.ey, limbCol, false);
