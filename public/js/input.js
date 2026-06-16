@@ -33,7 +33,15 @@ window.addEventListener('blur', () => keys.clear());
 
 function isTyping() {
   const el = document.activeElement;
-  return el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA');
+  if (!el) return false;
+  if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+  if (el.tagName === 'INPUT') {
+    // only text-entry fields swallow game keys — range/checkbox/file/etc. don't,
+    // so dragging a slider in the designer never blocks the controls
+    const t = (el.getAttribute('type') || 'text').toLowerCase();
+    return ['text', 'number', 'search', 'email', 'password', 'url', 'tel'].includes(t);
+  }
+  return false;
 }
 
 window.addEventListener('gamepadconnected', (e) => {

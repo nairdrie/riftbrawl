@@ -40,6 +40,19 @@ export function drawRigProjectile(ctx, pr, t) {
   return rig.drawProjectile(ctx, pr, CHARACTERS[pr.charId], t) === true;
 }
 
+// ── dev: the character designer (/dev/tuner.html) introspects/overrides rigs ──
+// A data-rig exposes its source spec; bespoke (hand-written) rigs return null.
+export function getDataSpec(id) {
+  const r = RIGS[id];
+  return r && r.spec ? r.spec : null;
+}
+// Swap in a (live-editing) rig for an id so drawFighter/Renderer draw it. Used
+// by the designer to preview edits; never called from gameplay code.
+export function setRig(id, rigObj) {
+  RIGS[id] = rigObj;
+}
+export function buildSpecRig(spec) { return buildDataRig(spec); }
+
 // p: sim player, t: seconds for ambient anim, opts: {ghost}
 export function drawFighter(ctx, p, t, opts = {}) {
   const char = CHARACTERS[p.charId];

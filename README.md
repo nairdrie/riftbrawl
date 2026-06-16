@@ -138,11 +138,14 @@ the spec is presentation only.
 - **Art template**: open `/dev/rig.html` — the **rig map**: a labelled rest
   skeleton on a measured grid to draw your design over, plus the live rig in
   motion. `/dev/poses.html` shows every state of every character on one sheet.
-- **Character designer**: open `/dev/tuner.html` — builds on the REED base in
-  the real engine. **Skin body parts with images** (head/torso/limbs/hand/foot/
-  weapon — each follows its rigged bone), dial the stance + sword hold over an
-  optional reference photo, zoom the preview, then **Export** a complete new
-  `<id>.rig.js`. Poses and part transforms are authored data, not guesswork.
+- **Character designer**: open `/dev/tuner.html`. Open any character to tweak,
+  or build a new one on the REED base. **Edit** mode: skeleton + pose sliders,
+  **image-skinned body parts** (head/torso/limbs/hand/foot/weapon, each follows
+  its bone), a reference overlay and a bones underlay. **Play** mode drives the
+  rig with the **real game controls** in the real engine (walk/jump/attack/
+  shield) so you see it move. Then **Export** a complete `<id>.rig.js`. (The five
+  legends are hand-coded rigs, so they're view/play-only in the designer; data
+  rigs — REED and ones you build — are fully editable.)
 
 Pipeline: *draw on the rig map → fill in a spec → register it in `fighters.js`.*
 

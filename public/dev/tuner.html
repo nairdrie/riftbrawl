@@ -14,6 +14,7 @@
     p.sub { margin: 0 0 12px; color: #8d99c2; font-size: 12px; }
     .grp { border: 1px solid #1d2342; border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
     .grp h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: #ffce3f; margin: 0 0 6px; }
+    .grp.dim { opacity: .45; pointer-events: none; }
     .row { display: grid; grid-template-columns: 84px 1fr 46px; align-items: center; gap: 6px; margin: 3px 0; }
     .row label { color: #aeb9d8; font-size: 11px; }
     .row input[type=range] { width: 100%; }
@@ -23,28 +24,39 @@
              padding: 6px 10px; cursor: pointer; font-size: 12px; }
     button:hover { background: #243056; }
     button.primary { background: #2a6cff; border-color: #2a6cff; color: #fff; }
+    button.go { background: #1f8a4c; border-color: #1f8a4c; color: #fff; }
     select, input[type=text], input[type=number] { background: #11162c; color: #cdd8ec;
              border: 1px solid #2c3c6a; border-radius: 5px; padding: 4px 6px; }
-    input[type=text] { width: 120px; }
+    input[type=text] { width: 96px; }
     pre { background: #11162c; border: 1px solid #2c3c6a; border-radius: 6px; padding: 8px;
           font: 11px ui-monospace, monospace; color: #bcd0ff; white-space: pre-wrap; word-break: break-word;
-          max-height: 200px; overflow: auto; }
+          max-height: 180px; overflow: auto; }
     .hint { color: #6f7da6; font-size: 11px; }
     .tag { font: 10px ui-monospace, monospace; color: #6f7da6; }
     .on { color: #41e3a0; }
+    .warn { color: #ffb454; }
+    kbd { background: #11162c; border: 1px solid #2c3c6a; border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
   <div id="panel">
     <h1>⚔ Character Designer</h1>
-    <p class="sub">Builds on the <b>REED</b> base rig. Skin body parts with images, dial the stance, then <b>Export</b> a new <code>.rig.js</code>. Everything renders in the real engine.</p>
+    <p class="sub">Pick a character to tweak, or build a new one on the REED base. <b>Play</b> drives it with the real game controls; <b>Edit</b> tweaks the skeleton, pose & part images.</p>
 
     <div class="grp">
       <h2>Character</h2>
       <div class="ctl">
-        <label>id</label><input type="text" id="id" value="reed">
-        <button id="new">New from base</button>
+        <label>open</label><select id="char"></select>
+        <span id="editState" class="tag"></span>
+      </div>
+      <div class="ctl">
+        <label>new id</label><input type="text" id="id" value="myhero">
+        <button id="new">New from REED</button>
+      </div>
+      <div class="ctl">
+        <button id="mode" class="go">▶ Play</button>
+        <span class="hint">controls: <kbd>WASD</kbd> move · <kbd>Space</kbd> jump · <kbd>J</kbd> attack · <kbd>K</kbd> special · <kbd>Shift</kbd> shield</span>
       </div>
       <div class="ctl">
         <label><input type="checkbox" id="facing" checked> face ▶</label>
@@ -54,11 +66,15 @@
       <div id="zoomRow"></div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="gSkel">
+      <h2>Skeleton</h2>
+      <div id="skelRows"></div>
+    </div>
+
+    <div class="grp" id="gParts">
       <h2>Body parts (images)</h2>
       <div class="ctl">
-        <label>part</label>
-        <select id="part"></select>
+        <label>part</label><select id="part"></select>
         <span id="partState" class="tag">vector</span>
       </div>
       <div class="ctl">
@@ -66,21 +82,21 @@
         <button id="clearPart">Remove</button>
       </div>
       <div id="partRows"></div>
-      <p class="hint">Tip: side-view art, facing right. Limb art should run left→right along the bone.</p>
+      <p class="hint">Side-view art, facing right. Limb art runs left→right along the bone.</p>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="gRef">
       <h2>Reference overlay</h2>
       <div class="ctl"><input type="file" id="ref" accept="image/*"></div>
       <div id="refRows"></div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="gPose">
       <h2>Idle pose</h2>
       <div id="poseRows"></div>
     </div>
 
-    <div class="grp">
+    <div class="grp" id="gWeapon">
       <h2>Weapon</h2>
       <div id="wpRows"></div>
     </div>
@@ -90,7 +106,7 @@
       <button id="reset">Reset pose</button>
     </div>
     <pre id="out"></pre>
-    <p class="hint">Save as <code>public/js/rigs/data/&lt;id&gt;.rig.js</code>, drop part PNGs in <code>public/assets/chars/&lt;id&gt;/</code>, then register the rig + add stats in <code>characters.js</code> (see RIG_FORMAT.md).</p>
+    <p class="hint">Save as <code>public/js/rigs/data/&lt;id&gt;.rig.js</code>, drop part PNGs in <code>public/assets/chars/&lt;id&gt;/</code>, register in <code>fighters.js</code> + add stats in <code>characters.js</code>.</p>
   </div>
   <script type="module" src="/dev/tuner.js"></script>
 </body>

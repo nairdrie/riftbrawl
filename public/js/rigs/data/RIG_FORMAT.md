@@ -47,12 +47,17 @@ moves), not facing the camera. Two consequences the format bakes in:
   `idlePose`), not magic numbers — so you can dial them in by eye instead of
   guessing coordinates.
 
-**Use the Character Designer — `/dev/tuner.html`.** It renders the *real* engine
-and builds on the REED base. Sliders cover the whole idle stance (foot stagger,
-hip sink, shoulder angle, lead-hand position, blade angle, off-hand, lean) and the
-weapon. You can drop a **reference photo behind the rig** and match it, zoom the
-preview, then **Export** a complete `<id>.rig.js`. This is the intended loop for
-getting stances *correct* rather than approximate.
+**Use the Character Designer — `/dev/tuner.html`.** Open any character to tweak,
+or build a new one on the REED base. **Edit** mode gives sliders for the whole
+skeleton (bone lengths, hip/shoulder/head heights, stance width) and idle stance
+(foot stagger, hip sink, shoulder angle, hand position, blade angle, lean) plus
+per-part images, a reference overlay and a bones underlay. **Play** mode runs the
+real shared sim with the **real game controls**, so you can walk/jump/attack and
+watch your rig animate. **Export** writes a complete `<id>.rig.js`.
+
+Only *data rigs* are editable (REED and characters you build/register here); the
+five built-in legends are hand-written draw code, so the designer shows them
+view/play-only. Convert a legend to a data spec if you want to tune it here.
 
 ## Image-skinned body parts (character design)
 
