@@ -96,6 +96,21 @@
       <div id="poseRows"></div>
     </div>
 
+    <div class="grp" id="gAnim">
+      <h2>Animation poses</h2>
+      <div class="ctl">
+        <label>state</label><select id="aState"></select>
+        <select id="aPhase" style="display:none"><option>wind</option><option selected>hit</option><option>rec</option></select>
+      </div>
+      <div class="ctl">
+        <span id="aStatus" class="tag"></span>
+        <button id="authorPose">Author</button>
+        <button id="clearPose">Clear</button>
+      </div>
+      <div id="aRows"></div>
+      <p class="hint">Attacks blend guard → wind → hit → rec automatically; author just <b>hit</b> for a quick swing, add wind/rec for polish. Preview freezes on the picked state/frame.</p>
+    </div>
+
     <div class="grp" id="gWeapon">
       <h2>Weapon</h2>
       <div id="wpRows"></div>

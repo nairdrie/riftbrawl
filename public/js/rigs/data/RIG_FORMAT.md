@@ -93,6 +93,31 @@ example (the stick fencer REED). The shape:
 | `weapon` | The thing in the front hand (`sword`/`staff`/`none`) — length, colors, one/two-handed, idle carry. |
 | `projectile` | The look of this character's neutral-B shot (optional; defaults to a tinted bolt). |
 | `images` | Optional per-part images (`head`/`torso`/`upperArm`/`foreArm`/`thigh`/`shin`/`hand`/`foot`/`weapon`) — each skins its bone. Replaces the vectors for that part. |
+| `poses` | Optional authored poses per state/attack (overrides the procedural motion). See below. |
+
+## Authoring moves & interactions (poses)
+
+Idle is `idlePose`; every *other* state and attack animates procedurally by
+default. To hand-author any of them, add a `poses` entry — the engine blends your
+keys with the move's real timing, and anything you don't author stays procedural.
+
+```js
+poses: {
+  // attacks keyframe by phase; the engine eases guard → wind → hit → rec.
+  // author just `hit` for a quick swing, add wind/rec for control.
+  fair: { hit: { handX: 30, handY: -34, wrist: 0.6, lean: 0.3, lunge: 8 } },
+  // every other interaction is a single pose:
+  shield: { handX: 6, handY: 24, wrist: 1.4, lean: -0.2 },
+  // states: run, crouch, air, jumpsquat, shield, shieldStun, dizzy, roll,
+  //         ledge, hitReel, grab, grabbed  (+ attacks jab…dair, nb/sb/ub/db)
+}
+```
+
+Pose fields (all optional, local units, +x leads): `handX/handY`, `wrist` (blade
+angle), `backHandX/backHandY`, `leadFootX/leadFootY`, `rearFootX/rearFootY`,
+`lean`, `lunge`, `shoulderAngle`, `twoHand`. **Author these in the designer**
+(`/dev/tuner.html` → *Animation poses*): pick a state/attack (+ phase), it freezes
+the rig on that frame, you pose it with sliders, then **Play** to see it in motion.
 
 Everything is JSON-able and every field has a default, so a minimal spec (`{}`)
 still draws a valid figure. Colors are palette keys — `primary`, `secondary`,

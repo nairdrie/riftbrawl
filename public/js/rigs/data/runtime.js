@@ -14,12 +14,49 @@
 // direction, y negative = up. drawFighter() has already flipped/scaled us.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { NB_CHARGE } from '/shared/constants.js';
+import { NB_CHARGE, ACT } from '/shared/constants.js';
 import {
-  TAU, lerp, clamp01, easeOut, shade, palette, paint, ink, disc, poly, stroke2,
+  TAU, lerp, clamp01, easeOut, easeOutBack, shade, palette, paint, ink, disc, poly, stroke2,
   ikSolve, platedSeg, jointCap, glowOn, glowOff,
   chain, chainLocal, ribbon, swingTrail, chargeOrb, dizzyStars, face,
 } from '../common.js';
+
+// ── authored pose overrides (the designer writes these) ──────────────────────
+// A "pose" is any subset of these fields (local units; +x leads). Attacks store
+// keyframes per phase (wind/hit/rec); other states store one pose. Any field a
+// character doesn't author falls back to the engine's procedural pose.
+const POSE_FIELDS = ['handX', 'handY', 'wrist', 'backHandX', 'backHandY',
+  'leadFootX', 'leadFootY', 'rearFootX', 'rearFootY', 'lean', 'lunge', 'shoulderAngle'];
+
+function lerpPose(a, b, t) {
+  const o = {};
+  for (const f of POSE_FIELDS) {
+    const av = a?.[f], bv = b?.[f];
+    if (av == null && bv == null) continue;
+    o[f] = av == null ? bv : bv == null ? av : av + (bv - av) * t;
+  }
+  const at = a?.twoHand, bt = b?.twoHand;
+  if (at != null || bt != null) o.twoHand = t < 0.5 ? (at ?? bt) : (bt ?? at);
+  return o;
+}
+
+// which authored-pose key the current sim state maps to (non-attack states)
+function stateKey(p, A) {
+  if (A.hang) return 'ledge';
+  if (p.act === ACT.SHIELDBREAK) return 'dizzy';
+  if (p.act === ACT.SHIELD) return 'shield';
+  if (p.act === ACT.SHIELDSTUN) return 'shieldStun';
+  if (p.act === ACT.HITSTUN) return 'hitReel';
+  if (p.act === ACT.GRAB) return 'grab';
+  if (p.act === ACT.GRABBED) return 'grabbed';
+  if (p.act === ACT.ROLL) return 'roll';
+  if (p.act === ACT.JUMPSQUAT) return 'jumpsquat';
+  if (A.airborne) return 'air';
+  if (A.runAmt > 0.05) return 'run';
+  if (A.crouch > 0.3) return 'crouch';
+  return 'idle';
+}
+
 
 // Resolve a color "token" from a spec: a palette key (primary/secondary/accent/
 // glow/trail/ink/priD/priL/secD/secL/accD) or a literal #hex. Falls back safely.
@@ -299,6 +336,25 @@ export function buildDataRig(spec) {
       if (A.reel) lean = -0.5;
       if (A.hang) lean = -0.1;
 
+      // ── authored pose override for this frame (null = fully procedural) ──────
+      let OVR = null;
+      if (spec.poses) {
+        if (M) {
+          const P = spec.poses[M.id];
+          if (P) {
+            const g = { handX: IP.handX, handY: IP.handY, wrist: IP.wrist,
+              backHandX: IP.backHandX, backHandY: IP.backHandY, shoulderAngle: IP.shoulderAngle, lean: 0, lunge: 0 };
+            if (M.ph === 'wind') OVR = lerpPose(g, P.wind ?? P.hit ?? g, M.wk);
+            else if (M.ph === 'hit') OVR = lerpPose(P.wind ?? g, P.hit ?? P.wind ?? g, easeOutBack(M.hk));
+            else OVR = lerpPose(P.hit ?? P.wind ?? g, P.rec ?? g, M.rk);
+          }
+        } else {
+          const k = stateKey(p, A);
+          if (k !== 'idle') OVR = spec.poses[k] ?? null;
+        }
+      }
+      if (OVR) { if (OVR.lean != null) lean = OVR.lean; if (OVR.lunge != null) lunge = OVR.lunge; }
+
       // ── cloth anchors (world → verlet → local) ───────────────────────────────
       const clothPts = [];
       const cloth = spec.cloth || [];
@@ -352,15 +408,20 @@ export function buildDataRig(spec) {
         bend1 = -1; bend2 = -1;
       }
       if (A.crouch > 0.3) { f1[0] += 4; f2[0] -= 4; }
+      if (OVR) {
+        if (OVR.leadFootX != null) f1 = [OVR.leadFootX, OVR.leadFootY ?? 0];
+        if (OVR.rearFootX != null) f2 = [OVR.rearFootX, OVR.rearFootY ?? 0];
+      }
 
       // ── hand targets + wrist angle ───────────────────────────────────────────
       // far shoulder rides a touch higher (foreshortening) for the 3/4 read
       const farLift = (1 - depth) * 3.5;
       let shF = [shoulderXd, shY + 3], shB = [-shoulderXd, shY + 2 - farLift];
       // shoulder angle: roll the shoulder line about the neck base so the lead
-      // shoulder leads forward/up into the guard (idle only; arms follow).
-      if (idle && IP.shoulderAngle) {
-        const ca = Math.cos(IP.shoulderAngle), sa = Math.sin(IP.shoulderAngle);
+      // shoulder leads into the guard. From the authored pose, else idle's value.
+      const shAng = OVR?.shoulderAngle != null ? OVR.shoulderAngle : (idle ? IP.shoulderAngle : 0);
+      if (shAng) {
+        const ca = Math.cos(shAng), sa = Math.sin(shAng);
         const roll = ([x, y]) => { const dy = y - shY; return [x * ca - dy * sa, shY + x * sa + dy * ca]; };
         shF = roll(shF); shB = roll(shB);
       }
@@ -419,6 +480,12 @@ export function buildDataRig(spec) {
         hB = [IP.backHandX, shY + IP.backHandY + bob * 0.6];          // rear hand tucked to the body
         twoHand = !!W.idleTwoHand;
       }
+      if (OVR && OVR.handX != null) {
+        hF = [OVR.handX, shY + (OVR.handY ?? 0)];
+        if (OVR.wrist != null) wA = OVR.wrist;
+        if (OVR.twoHand != null) twoHand = OVR.twoHand;
+      }
+      if (OVR && OVR.backHandX != null) hB = [OVR.backHandX, shY + (OVR.backHandY ?? 0)];
       if (twoHand && !hB) hB = [hF[0] * 0.5 - 3, hF[1] * 0.5 + shY * 0.5 + 6];
       if (!hB) hB = [-(sk.shoulderX ?? 9) * 1.5, shY + 12];          // resting counter-hand
 

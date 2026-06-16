@@ -114,6 +114,87 @@ $('img').addEventListener('change', (e) => {
 $('clearPart').addEventListener('click', () => { if (workingSpec?.images) delete workingSpec.images[partSel.value]; syncPartUI(); });
 $('ref').addEventListener('change', (e) => { const f = e.target.files[0]; if (!f) return; const img = new Image(); img.onload = () => refImg = img; img.src = URL.createObjectURL(f); });
 
+// ── animation poses (per-state / per-attack keyframes) ──────────────────────
+const ATTACKS = ['jab', 'ftilt', 'utilt', 'dtilt', 'nair', 'fair', 'bair', 'uair', 'dair', 'nb', 'sb', 'ub', 'db'];
+const A_STATES = ['idle', 'run', 'crouch', 'air', 'jumpsquat', 'shield', 'shieldStun', 'dizzy', 'roll', 'ledge', 'hitReel', 'grab', 'grabbed', ...ATTACKS];
+const isAttack = (k) => ATTACKS.includes(k);
+const aState = $('aState'), aPhase = $('aPhase');
+for (const s of A_STATES) { const o = document.createElement('option'); o.value = s; o.textContent = s; aState.appendChild(o); }
+aState.value = 'idle';
+const APOSE = [
+  ['Hand X', 'handX', -20, 46, 0.5], ['Hand Y', 'handY', -60, 40, 0.5], ['Blade ∠', 'wrist', -3.14, 3.14, 0.02],
+  ['Off-hand X', 'backHandX', -26, 30, 0.5], ['Off-hand Y', 'backHandY', -40, 40, 0.5],
+  ['Lead foot X', 'leadFootX', -26, 30, 0.5], ['Lead foot Y', 'leadFootY', -30, 20, 0.5],
+  ['Rear foot X', 'rearFootX', -34, 20, 0.5], ['Rear foot Y', 'rearFootY', -30, 20, 0.5],
+  ['Lean', 'lean', -0.9, 0.9, 0.02], ['Lunge', 'lunge', -16, 16, 0.5], ['Shoulder ∠', 'shoulderAngle', -0.7, 0.7, 0.02],
+];
+const aCtl = {};
+for (const [label, f, mn, mx, st] of APOSE)
+  aCtl[f] = mkRange($('aRows'), label, mn, mx, st, 0, (v) => { if (!editable || aState.value === 'idle') return; const t = ensureTarget(); if (t) t[f] = v; });
+function getTarget() {
+  const k = aState.value; if (k === 'idle' || !workingSpec?.poses) return null;
+  return isAttack(k) ? (workingSpec.poses[k]?.[aPhase.value] || null) : (workingSpec.poses[k] || null);
+}
+function ensureTarget() {
+  const k = aState.value; if (k === 'idle' || !workingSpec) return null;
+  workingSpec.poses = workingSpec.poses || {};
+  if (isAttack(k)) { workingSpec.poses[k] = workingSpec.poses[k] || {}; return workingSpec.poses[k][aPhase.value] = workingSpec.poses[k][aPhase.value] || {}; }
+  return workingSpec.poses[k] = workingSpec.poses[k] || {};
+}
+const defA = (f) => { const ip = workingSpec?.idlePose || {}; const d = { handX: 24, handY: 5, wrist: -0.5, backHandX: 3, backHandY: 13 }; return f in d ? (ip[f] ?? d[f]) : 0; };
+function seedPose() { return { handX: defA('handX'), handY: defA('handY'), wrist: defA('wrist'), backHandX: defA('backHandX'), backHandY: defA('backHandY'), lean: 0, lunge: 0 }; }
+function syncAPose() {
+  const k = aState.value, atk = isAttack(k);
+  aPhase.style.display = atk ? '' : 'none';
+  const t = getTarget();
+  $('aStatus').textContent = k === 'idle' ? '↑ edit in Idle pose' : (t ? 'authored ✓' : 'procedural (Author to edit)');
+  $('aStatus').className = 'tag' + (t ? ' on' : '');
+  for (const [, f] of APOSE) aCtl[f].set(t?.[f] ?? defA(f));
+}
+aState.addEventListener('change', syncAPose);
+aPhase.addEventListener('change', syncAPose);
+$('authorPose').addEventListener('click', () => { if (!editable || aState.value === 'idle') return; Object.assign(ensureTarget(), seedPose()); syncAPose(); });
+$('clearPose').addEventListener('click', () => {
+  const k = aState.value; if (k === 'idle' || !workingSpec?.poses) return;
+  if (isAttack(k)) { if (workingSpec.poses[k]) delete workingSpec.poses[k][aPhase.value]; } else delete workingSpec.poses[k];
+  syncAPose();
+});
+
+// build a frozen preview player for the selected state/phase
+function phaseFrame(ch, key, ph) {
+  if (['nb', 'sb', 'ub', 'db'].includes(key)) {
+    const s = ch.specials[key], from = s.from ?? s.fire ?? 8, to = s.to ?? (s.fire ?? 8) + 4, total = s.total;
+    return ph === 'wind' ? Math.max(1, from - 1) : ph === 'hit' ? Math.floor((from + to) / 2) : Math.min(total - 1, to + 2);
+  }
+  const m = ch.moves[key], hb = m.hitboxes[0];
+  return ph === 'wind' ? Math.max(1, hb.from - 1) : ph === 'hit' ? Math.floor((hb.from + hb.to) / 2) : Math.min(m.total - 1, hb.to + 2);
+}
+function fakePreview() {
+  const k = aState.value, p = fakeIdle($('facing').checked ? 1 : -1);
+  if (k === 'idle') return p;
+  const ch = CHARACTERS[selId];
+  if (isAttack(k)) {
+    p.act = ACT.ATTACK; p.moveId = k; p.actFrame = phaseFrame(ch, k, aPhase.value);
+    if (['nair', 'fair', 'bair', 'uair', 'dair', 'ub'].includes(k)) { p.grounded = false; p.vy = k === 'dair' ? 5 : -2; }
+    return p;
+  }
+  switch (k) {
+    case 'run': p.vx = ch.runSpeed; p.x = 40; break;
+    case 'crouch': p.lastIn = { b: 0, x: 0, y: 1 }; break;
+    case 'air': p.grounded = false; p.vy = 4; break;
+    case 'jumpsquat': p.act = ACT.JUMPSQUAT; break;
+    case 'shield': p.act = ACT.SHIELD; break;
+    case 'shieldStun': p.act = ACT.SHIELDSTUN; p.stun = 20; break;
+    case 'dizzy': p.act = ACT.SHIELDBREAK; break;
+    case 'roll': p.act = ACT.ROLL; p.actFrame = 10; p.rollDir = 1; break;
+    case 'ledge': p.act = ACT.LEDGE; p.grounded = false; break;
+    case 'hitReel': p.act = ACT.HITSTUN; p.vx = 2; p.stun = 20; break;
+    case 'grab': p.act = ACT.GRAB; p.grabbing = -1; p.actFrame = 6; break;
+    case 'grabbed': p.act = ACT.GRABBED; break;
+  }
+  return p;
+}
+
 // ── open / new character ────────────────────────────────────────────────────
 const charSel = $('char');
 function refreshCharList() {
@@ -124,11 +205,12 @@ function refreshCharList() {
 function syncSlidersFromSpec() {
   for (const [, path] of [...SKEL, ...POSE, ...WEAPON]) ctl[path]?.set(getPath(workingSpec, path) ?? getPath(reedSpec, path) ?? 0);
   syncPartUI();
+  if (typeof syncAPose === 'function') syncAPose();
 }
 function setEditableUI() {
   $('editState').textContent = editable ? 'editable ✓' : 'bespoke — view/play only';
   $('editState').className = 'tag' + (editable ? ' on' : ' warn');
-  for (const g of ['gSkel', 'gParts', 'gPose', 'gWeapon']) $(g).classList.toggle('dim', !editable);
+  for (const g of ['gSkel', 'gParts', 'gPose', 'gWeapon', 'gAnim']) $(g).classList.toggle('dim', !editable);
 }
 function openChar(id) {
   selId = id;
@@ -224,7 +306,7 @@ function frame(now) {
     ctx.restore();
   }
   const tt = $('freeze').checked ? 12.3 : now / 1000;
-  const p = fakeIdle($('facing').checked ? 1 : -1);
+  const p = fakePreview();
   const drawAt = (t) => { ctx.save(); ctx.translate(gx, gy); ctx.scale(view.zoom, view.zoom); drawFighter(ctx, p, t); ctx.restore(); };
   if ($('bones').checked && workingSpec) {        // faint vector underlay for aligning art
     const saved = workingSpec.images; workingSpec.images = {};
