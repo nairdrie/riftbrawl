@@ -10,21 +10,23 @@ import { CHARACTERS } from '/shared/characters.js';
 import { deriveAnim, drawStar as starFn, TAU } from './rigs/common.js';
 
 const SMASH_MOVES = new Set(['ftilt', 'utilt', 'dtilt']);
-import { aegisRig } from './rigs/aegis.js';
-import { voltRig } from './rigs/volt.js';
-import { emberRig } from './rigs/ember.js';
-import { tideRig } from './rigs/tide.js';
-import { novaRig } from './rigs/nova.js';
-// data-driven rigs (importable characters): one engine, many specs
+// Every character is now a DATA RIG (one engine, many specs). The legacy
+// hand-written rigs (js/rigs/aegis.js …) are kept for reference but no longer
+// used. Stats/movesets stay in characters.js; special FX render in the renderer.
 import { buildDataRig } from './rigs/data/runtime.js';
 import { reedSpec } from './rigs/data/reed.rig.js';
+import { aegisSpec } from './rigs/data/aegis.rig.js';
+import { voltSpec } from './rigs/data/volt.rig.js';
+import { emberSpec } from './rigs/data/ember.rig.js';
+import { tideSpec } from './rigs/data/tide.rig.js';
+import { novaSpec } from './rigs/data/nova.rig.js';
 
 const RIGS = {
-  aegis: aegisRig,
-  volt: voltRig,
-  ember: emberRig,
-  tide: tideRig,
-  nova: novaRig,
+  aegis: buildDataRig(aegisSpec),
+  volt: buildDataRig(voltSpec),
+  ember: buildDataRig(emberSpec),
+  tide: buildDataRig(tideSpec),
+  nova: buildDataRig(novaSpec),
   reed: buildDataRig(reedSpec),
 };
 
