@@ -8,7 +8,7 @@
 // Edits mutate a working spec the engine reads live; production rigs untouched.
 
 import { createGameState, step } from '/shared/sim.js';
-import { ACT, PHASE } from '/shared/constants.js';
+import { ACT, PHASE, MS_PER_TICK } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { drawFighter, getDataSpec, setRig, buildSpecRig } from '/js/fighters.js';
 import { reedSpec } from '/js/rigs/data/reed.rig.js';
@@ -182,7 +182,7 @@ $('mode').addEventListener('click', () => {
   mode = mode === 'play' ? 'edit' : 'play';
   $('mode').textContent = mode === 'play' ? '⏸ Edit' : '▶ Play';
   $('mode').classList.toggle('go', mode !== 'play');
-  if (mode === 'play') { renderer = renderer || new Renderer(c); ensureSim(); }
+  if (mode === 'play') { renderer = renderer || new Renderer(c); ensureSim(); last = performance.now(); acc = 0; }
   layout();
 });
 
@@ -190,13 +190,19 @@ $('mode').addEventListener('click', () => {
 const fakeIdle = (facing) => ({ charId: selId, idx: 0, uid: 'design', facing, grounded: true, vx: 0, vy: 0, percent: 0,
   act: ACT.FREE, actFrame: 0, moveId: '', stun: 0, hitlag: 0, shield: 60, invuln: 0, jumpsLeft: 1, fastFalling: false, charge: 0, x: 0, y: 0, lastIn: { b: 0, x: 0, y: 0 } });
 
-let last = performance.now();
+let last = performance.now(), acc = 0;
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dtMs = Math.max(0, Math.min(100, now - last)); last = now;
   if (mode === 'play' && renderer && sim) {
-    step(sim, [sampleInput()]);
+    // fixed 60Hz timestep — rAF can fire at 120/144Hz, so stepping once per
+    // frame would run the sim 2–2.4× too fast. Accumulate and step in ticks,
+    // exactly like the real client loop (with the same spiral-of-death guard).
+    acc += dtMs;
+    let n = 0;
+    while (acc >= MS_PER_TICK && n++ < 6) { step(sim, [sampleInput()]); acc -= MS_PER_TICK; }
+    if (n >= 6) acc = 0;
     sim.players[0].stocks = 3;                 // endless sandbox (never KO's out)
-    renderer.render(dt, { players: sim.players, projectiles: sim.projectiles,
+    renderer.render(dtMs / 1000, { players: sim.players, projectiles: sim.projectiles,
       meta: [{ charId: selId, username: (workingSpec?.id || CHARACTERS[selId]?.name || selId) }],
       myIdx: 0, phase: sim.phase, phaseTimer: sim.phaseTimer });
     $('out').textContent = exportText();
