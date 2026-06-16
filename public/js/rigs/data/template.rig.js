@@ -37,6 +37,7 @@ export const templateSpec = {
     leadFoot: 8, rearFoot: -11, rearLift: 1.5,
     handX: 24, handY: 5, wrist: -0.5,
     backHandX: 3, backHandY: 13, leanAdd: 0,
+    shoulderAngle: 0,       // roll the shoulder line (lead shoulder forward/up)
   },
 
   // ── skeleton: the proportions the engine poses every frame ────────────────

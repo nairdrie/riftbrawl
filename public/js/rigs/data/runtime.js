@@ -209,6 +209,7 @@ export function buildDataRig(spec) {
         leadFoot: 8, rearFoot: -11, rearLift: 1.5,   // foot placement (staggered)
         handX: 24, handY: 5, wrist: -0.5,            // sword hand + blade angle
         backHandX: 3, backHandY: 13, leanAdd: 0,     // off hand + forward lean
+        shoulderAngle: 0,                            // roll of the shoulder line (bladed stance)
         ...(spec.idlePose || {}), ...(tune?.idlePose || {}),
       };
       const hipY = sk.hipY + crouchDrop + idleSettle + stepBob * 0.5;
@@ -290,7 +291,14 @@ export function buildDataRig(spec) {
       // ── hand targets + wrist angle ───────────────────────────────────────────
       // far shoulder rides a touch higher (foreshortening) for the 3/4 read
       const farLift = (1 - depth) * 3.5;
-      const shF = [shoulderXd, shY + 3], shB = [-shoulderXd, shY + 2 - farLift];
+      let shF = [shoulderXd, shY + 3], shB = [-shoulderXd, shY + 2 - farLift];
+      // shoulder angle: roll the shoulder line about the neck base so the lead
+      // shoulder leads forward/up into the guard (idle only; arms follow).
+      if (idle && IP.shoulderAngle) {
+        const ca = Math.cos(IP.shoulderAngle), sa = Math.sin(IP.shoulderAngle);
+        const roll = ([x, y]) => { const dy = y - shY; return [x * ca - dy * sa, shY + x * sa + dy * ca]; };
+        shF = roll(shF); shB = roll(shB);
+      }
       let hF, hB, wA = 0.9, twoHand = !!W.twoHand, hot = false, weaponOut = W.type !== 'none';
       // elbow bend directions (pose-aware, not camera-facing constants): +1 drops
       // the elbow down, -1 lifts it. Defaults suit the swings; idle overrides.

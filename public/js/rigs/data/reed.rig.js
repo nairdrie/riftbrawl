@@ -28,6 +28,7 @@ export const reedSpec = {
     leadFoot: 8, rearFoot: -11, rearLift: 1.5,    // staggered feet
     handX: 24, handY: 5, wrist: -0.5,             // sword hand + blade angle
     backHandX: 3, backHandY: 13, leanAdd: 0,      // off hand + forward lean
+    shoulderAngle: 0,                             // roll of the shoulder line
   },
 
   // ── skeleton: proportions the runtime poses every frame ───────────────────

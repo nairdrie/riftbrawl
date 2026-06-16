@@ -32,6 +32,7 @@ const POSE = [
   ['Blade angle', 'wrist', -3.14, 3.14, 0.02, -0.5],
   ['Off-hand X', 'backHandX', -22, 26, 0.5, 3],
   ['Off-hand Y', 'backHandY', -22, 30, 0.5, 13],
+  ['Shoulder ∠', 'shoulderAngle', -0.7, 0.7, 0.02, 0],
 ];
 const WEAPON = [
   ['Length', 'length', 16, 92, 1, 56],
@@ -83,6 +84,7 @@ idlePose: {
   leadFoot: ${f2(state.leadFoot)}, rearFoot: ${f2(state.rearFoot)}, rearLift: ${f2(state.rearLift)},
   handX: ${f2(state.handX)}, handY: ${f2(state.handY)}, wrist: ${f2(state.wrist)},
   backHandX: ${f2(state.backHandX)}, backHandY: ${f2(state.backHandY)}, leanAdd: ${f2(state.leanAdd)},
+  shoulderAngle: ${f2(state.shoulderAngle)},
 },
 weapon: { /* merge into existing */ length: ${f2(state.length)}, grip: ${f2(state.grip)}, width: ${f2(state.width)} },`;
 }
@@ -116,6 +118,7 @@ function frame() {
         leadFoot: state.leadFoot, rearFoot: state.rearFoot, rearLift: state.rearLift,
         handX: state.handX, handY: state.handY, wrist: state.wrist,
         backHandX: state.backHandX, backHandY: state.backHandY, leanAdd: state.leanAdd,
+        shoulderAngle: state.shoulderAngle,
       },
       weapon: { length: state.length, grip: state.grip, width: state.width },
     },
