@@ -94,21 +94,25 @@ const PARTS = ['head', 'torso', 'upperArm', 'foreArm', 'thigh', 'shin', 'hand', 
 const partSel = $('part');
 for (const p of PARTS) { const o = document.createElement('option'); o.value = p; o.textContent = p; partSel.appendChild(o); }
 partSel.value = 'torso';
-const PT = [['Scale', 'scale', 0.05, 6, 0.01], ['Offset X', 'ox', -80, 80, 0.5], ['Offset Y', 'oy', -80, 80, 0.5], ['Rotate', 'rot', -3.14, 3.14, 0.02]];
+// Width ×/Length × scale the part (vector OR image); the rest tune an image.
+// ensurePart() makes a config even with no image so vector parts can be scaled.
+const ensurePart = () => { workingSpec.images = workingSpec.images || {}; return (workingSpec.images[partSel.value] ||= {}); };
+const PT = [['Width ×', 'wScale', 0.3, 2.5, 0.05, 1], ['Length ×', 'lenScale', 0.3, 2.5, 0.05, 1],
+            ['Img scale', 'scale', 0.05, 6, 0.01, 1], ['Offset X', 'ox', -80, 80, 0.5, 0], ['Offset Y', 'oy', -80, 80, 0.5, 0], ['Rotate', 'rot', -3.14, 3.14, 0.02, 0]];
 const ptCtl = {};
-for (const [label, key, mn, mx, st] of PT)
-  ptCtl[key] = mkRange($('partRows'), label, mn, mx, st, key === 'scale' ? 1 : 0, (v) => { const cf = workingSpec?.images?.[partSel.value]; if (cf) cf[key] = v; });
+for (const [label, key, mn, mx, st, def] of PT)
+  ptCtl[key] = mkRange($('partRows'), label, mn, mx, st, def, (v) => { if (!editable) return; ensurePart()[key] = v; });
 function syncPartUI() {
   const cf = workingSpec?.images?.[partSel.value];
-  $('partState').textContent = cf ? 'image ✓' : 'vector';
-  $('partState').className = 'tag' + (cf ? ' on' : '');
+  $('partState').textContent = cf?.src ? 'image ✓' : 'vector';
+  $('partState').className = 'tag' + (cf?.src ? ' on' : '');
+  ptCtl.wScale.set(cf?.wScale ?? 1); ptCtl.lenScale.set(cf?.lenScale ?? 1);
   ptCtl.scale.set(cf?.scale ?? 1); ptCtl.ox.set(cf?.ox ?? 0); ptCtl.oy.set(cf?.oy ?? 0); ptCtl.rot.set(cf?.rot ?? 0);
 }
 partSel.addEventListener('change', syncPartUI);
 $('img').addEventListener('change', (e) => {
   const f = e.target.files[0]; if (!f || !workingSpec) return;
-  workingSpec.images = workingSpec.images || {};
-  workingSpec.images[partSel.value] = { src: URL.createObjectURL(f), scale: 1, ox: 0, oy: 0, rot: 0 };
+  Object.assign(ensurePart(), { src: URL.createObjectURL(f), scale: 1, ox: 0, oy: 0, rot: 0 });  // keep wScale/lenScale
   syncPartUI(); e.target.value = '';
 });
 $('clearPart').addEventListener('click', () => { if (workingSpec?.images) delete workingSpec.images[partSel.value]; syncPartUI(); });
