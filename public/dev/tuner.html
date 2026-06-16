@@ -124,8 +124,11 @@
 
     <div class="ctl">
       <button class="primary" id="copy">Export spec</button>
+      <button id="importBtn">Import…</button>
       <button id="reset">Reset pose</button>
     </div>
+    <textarea id="importBox" style="display:none;width:100%;height:130px;box-sizing:border-box;margin-top:6px;font:11px/1.4 monospace;background:#0b0f1e;color:#cdd8ec;border:1px solid #2a3550;border-radius:6px;padding:6px" placeholder="Paste an exported spec here — the `export const …Spec = { … }` block or raw JSON — then click Load."></textarea>
+    <div class="ctl" id="importRow" style="display:none"><button class="primary" id="loadSpec">Load spec</button><span id="importMsg" class="hint"></span></div>
     <pre id="out"></pre>
     <p class="hint">Save as <code>public/js/rigs/data/&lt;id&gt;.rig.js</code>, drop part PNGs in <code>public/assets/chars/&lt;id&gt;/</code>, register in <code>fighters.js</code> + add stats in <code>characters.js</code>.</p>
   </div>

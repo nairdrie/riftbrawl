@@ -229,6 +229,7 @@ function setEditableUI() {
 }
 function openChar(id) {
   selId = id;
+  $('id').value = id;                    // keep export/import naming in sync
   const base = getDataSpec(id);          // a data rig's live spec, or null
   if (base) {
     workingSpec = cloneOf(base); workingSpec.id = id; workingSpec.images = workingSpec.images || {};
@@ -267,6 +268,35 @@ function exportText() {
 }
 $('copy').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText(exportText()); $('copy').textContent = 'Copied ✓'; setTimeout(() => $('copy').textContent = 'Export spec', 1200); } catch {}
+});
+
+// ── import (continue building from an exported spec) ─────────────────────────
+// Accepts the full `export const …Spec = { … }` block, or raw JSON.
+function parseSpec(text) {
+  const a = text.indexOf('{'), b = text.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('no { … } object found');
+  return JSON.parse(text.slice(a, b + 1));
+}
+$('importBtn').addEventListener('click', () => {
+  const show = $('importBox').style.display === 'none';
+  $('importBox').style.display = $('importRow').style.display = show ? '' : 'none';
+  if (show) $('importBox').focus();
+});
+$('loadSpec').addEventListener('click', () => {
+  let spec;
+  try { spec = parseSpec($('importBox').value); }
+  catch (e) { $('importMsg').textContent = 'Import failed: ' + e.message; return; }
+  const id = (spec.id || $('id').value.trim() || 'myhero').replace(/[^a-z0-9_]/gi, '');
+  spec.id = id; spec.images = spec.images || {};
+  CHARACTERS[id] = CHARACTERS[id] || { ...cloneOf(CHARACTERS.reed), id, name: id.toUpperCase() };
+  workingSpec = spec;
+  setRig(id, buildSpecRig(workingSpec));
+  selId = id; editable = true; $('id').value = id;
+  setEditableUI(); syncSlidersFromSpec();
+  if (mode === 'play') ensureSim();
+  refreshCharList();
+  $('importMsg').textContent = `Loaded "${id}" ✓ — editing now`;
+  $('importBox').style.display = $('importRow').style.display = 'none';
 });
 
 // ── play mode (real sim + controls) ─────────────────────────────────────────
