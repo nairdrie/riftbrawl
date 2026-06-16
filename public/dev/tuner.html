@@ -36,10 +36,19 @@
     .on { color: #41e3a0; }
     .warn { color: #ffb454; }
     kbd { background: #11162c; border: 1px solid #2c3c6a; border-radius: 4px; padding: 0 4px; font: 11px ui-monospace, monospace; }
+    #playbar { position: fixed; bottom: 18px; left: calc((100vw - 340px) / 2); transform: translateX(-50%);
+               display: flex; gap: 8px; align-items: center; background: #0a0d1dd9; border: 1px solid #1d2342;
+               border-radius: 9px; padding: 6px 10px; backdrop-filter: blur(3px); z-index: 5; }
+    #loopBtn { min-width: 92px; }
+    #loopBtn.on { background: #1f8a4c; border-color: #1f8a4c; color: #fff; }
   </style>
 </head>
 <body>
   <canvas id="c"></canvas>
+  <div id="playbar">
+    <button id="loopBtn" title="Play / pause the previewed animation (space)">▶ Play</button>
+    <span id="loopHint" class="tag">looping idle</span>
+  </div>
   <div id="panel">
     <h1>⚔ Character Designer</h1>
     <p class="sub">Pick a character to tweak, or build a new one on the REED base. <b>Play</b> drives it with the real game controls; <b>Edit</b> tweaks the skeleton, pose & part images.</p>

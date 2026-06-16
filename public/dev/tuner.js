@@ -166,7 +166,7 @@ function syncAPose() {
   $('aStatus').className = 'tag' + (t ? ' on' : '');
   for (const [, f] of APOSE) aCtl[f].set(t?.[f] ?? defA(f));
 }
-aState.addEventListener('change', syncAPose);
+aState.addEventListener('change', () => { syncAPose(); if (previewPlay) setLoop(true); });
 aPhase.addEventListener('change', syncAPose);
 $('authorPose').addEventListener('click', () => { if (!editable || aState.value === 'idle') return; Object.assign(ensureTarget(), seedPose()); syncAPose(); });
 $('clearPose').addEventListener('click', () => {
@@ -184,13 +184,18 @@ function phaseFrame(ch, key, ph) {
   const m = ch.moves[key], hb = m.hitboxes[0];
   return ph === 'wind' ? Math.max(1, hb.from - 1) : ph === 'hit' ? Math.floor((hb.from + hb.to) / 2) : Math.min(m.total - 1, hb.to + 2);
 }
+const isAirMove = (k) => ['nair', 'fair', 'bair', 'uair', 'dair', 'ub'].includes(k);
+function moveTotal(ch, k) {
+  if (['nb', 'sb', 'ub', 'db'].includes(k)) return ch.specials?.[k]?.total ?? 30;
+  return ch.moves?.[k]?.total ?? 30;
+}
 function fakePreview() {
   const k = aState.value, p = fakeIdle($('facing').checked ? 1 : -1);
   if (k === 'idle') return p;
   const ch = CHARACTERS[selId];
   if (isAttack(k)) {
     p.act = ACT.ATTACK; p.moveId = k; p.actFrame = phaseFrame(ch, k, aPhase.value);
-    if (['nair', 'fair', 'bair', 'uair', 'dair', 'ub'].includes(k)) { p.grounded = false; p.vy = k === 'dair' ? 5 : -2; }
+    if (isAirMove(k)) { p.grounded = false; p.vy = k === 'dair' ? 5 : -2; }
     return p;
   }
   switch (k) {
@@ -209,6 +214,47 @@ function fakePreview() {
   }
   return p;
 }
+
+// ── preview playback (loop the selected animation) ───────────────────────────
+let previewPlay = false, pClock = 0;     // pClock = seconds into the looping playhead
+// Returns { p, t }. When playing, advances the selected animation (attacks cycle
+// wind→hit→rec with an idle rest so the crossfade re-entry shows; run/roll/grab
+// step their frames). When paused, falls back to the static authoring still.
+function previewFrame(now) {
+  if (!previewPlay) return { p: fakePreview(), t: $('freeze').checked ? 12.3 : now / 1000 };
+  const k = aState.value, p = fakeIdle($('facing').checked ? 1 : -1), ch = CHARACTERS[selId];
+  const t = pClock, f = Math.floor(pClock * 60);
+  if (isAttack(k)) {
+    const total = moveTotal(ch, k), tail = 34;        // idle rest between swings
+    const ff = f % (total + tail);
+    if (ff < total) { p.act = ACT.ATTACK; p.moveId = k; p.actFrame = Math.max(1, ff); if (isAirMove(k)) { p.grounded = false; p.vy = k === 'dair' ? 5 : -2; } }
+    return { p, t };                                   // else: idle rest → smooth re-entry
+  }
+  switch (k) {
+    case 'run': p.vx = ch.runSpeed; p.x = pClock * ch.runSpeed * 60; break;   // distance-driven cycle
+    case 'crouch': p.lastIn = { b: 0, x: 0, y: 1 }; break;
+    case 'air': p.grounded = false; p.vy = 4; break;
+    case 'jumpsquat': p.act = ACT.JUMPSQUAT; break;
+    case 'shield': p.act = ACT.SHIELD; break;
+    case 'shieldStun': p.act = ACT.SHIELDSTUN; p.stun = 20; break;
+    case 'dizzy': p.act = ACT.SHIELDBREAK; break;
+    case 'roll': p.act = ACT.ROLL; p.actFrame = 1 + (f % 26); p.rollDir = 1; break;
+    case 'ledge': p.act = ACT.LEDGE; p.grounded = false; break;
+    case 'hitReel': p.act = ACT.HITSTUN; p.vx = 2; p.stun = 20; break;
+    case 'grab': p.act = ACT.GRAB; p.grabbing = -1; p.actFrame = 1 + (f % 20); break;
+    case 'grabbed': p.act = ACT.GRABBED; break;
+  }
+  return { p, t };
+}
+function setLoop(on) {
+  previewPlay = on; pClock = 0;
+  const b = $('loopBtn'); b.textContent = on ? '⏸ Pause' : '▶ Play'; b.classList.toggle('on', on);
+  $('loopHint').textContent = on ? 'looping ' + aState.value : 'paused';
+}
+$('loopBtn').addEventListener('click', () => setLoop(!previewPlay));
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && mode === 'edit' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.preventDefault(); setLoop(!previewPlay); }
+});
 
 // ── open / new character ────────────────────────────────────────────────────
 const charSel = $('char');
@@ -310,7 +356,8 @@ $('mode').addEventListener('click', () => {
   mode = mode === 'play' ? 'edit' : 'play';
   $('mode').textContent = mode === 'play' ? '⏸ Edit' : '▶ Play';
   $('mode').classList.toggle('go', mode !== 'play');
-  if (mode === 'play') { renderer = renderer || new Renderer(c); ensureSim(); last = performance.now(); acc = 0; }
+  if (mode === 'play') { renderer = renderer || new Renderer(c); ensureSim(); last = performance.now(); acc = 0; setLoop(false); }
+  $('playbar').style.display = mode === 'play' ? 'none' : 'flex';
   layout();
 });
 
@@ -322,7 +369,7 @@ let drag = null;           // active end-effector being dragged
 const r2 = (v) => Math.round(v * 10) / 10;
 
 function drawHandles(ctx) {
-  if (!editable || !cap.pts) return;
+  if (!editable || !cap.pts || previewPlay) return;
   const dpr = devicePixelRatio;
   ctx.save();
   ctx.lineWidth = 2;
@@ -383,7 +430,7 @@ function refreshPoseUI() {
   else if (typeof syncAPose === 'function') syncAPose();
 }
 c.addEventListener('mousedown', (e) => {
-  if (mode === 'play' || !editable || !cap.pts) return;
+  if (mode === 'play' || previewPlay || !editable || !cap.pts) return;
   const rect = c.getBoundingClientRect();
   const h = handleAt(e.clientX - rect.left, e.clientY - rect.top);
   if (!h) return;
@@ -431,8 +478,8 @@ function frame(now) {
     ctx.drawImage(refImg, gx - w / 2 + refState.x, gy - h + refState.y, w, h);
     ctx.restore();
   }
-  const tt = $('freeze').checked ? 12.3 : now / 1000;
-  const p = fakePreview();
+  if (previewPlay) pClock += dtMs / 1000;
+  const { p, t: tt } = previewFrame(now);
   const drawAt = (t) => { ctx.save(); ctx.translate(gx, gy); ctx.scale(view.zoom, view.zoom); drawFighter(ctx, p, t); ctx.restore(); };
   if ($('bones').checked && workingSpec) {        // faint vector underlay for aligning art
     const saved = workingSpec.images; workingSpec.images = {};
