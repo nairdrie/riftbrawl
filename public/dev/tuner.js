@@ -12,7 +12,8 @@ import { ACT, PHASE, MS_PER_TICK } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
 import { drawFighter, getDataSpec, setRig, buildSpecRig } from '/js/fighters.js';
 import { reedSpec } from '/js/rigs/data/reed.rig.js';
-import { poseCapture } from '/js/rigs/data/runtime.js';
+import { poseCapture, getPartDraw } from '/js/rigs/data/runtime.js';
+import { openPainter } from '/dev/painter.js';
 import { Renderer } from '/js/renderer.js';
 import { sampleInput } from '/js/input.js';
 
@@ -117,6 +118,19 @@ $('img').addEventListener('change', (e) => {
   syncPartUI(); e.target.value = '';
 });
 $('clearPart').addEventListener('click', () => { if (workingSpec?.images) delete workingSpec.images[partSel.value]; syncPartUI(); });
+$('paintPart').addEventListener('click', () => {
+  if (!editable || !workingSpec) return;
+  const part = partSel.value;
+  const vector = getPartDraw(workingSpec, part, CHARACTERS[selId]?.colors);
+  if (!vector) return;
+  openPainter({
+    part, vector,
+    existingSrc: workingSpec.images?.[part]?.src || null,
+    palette: CHARACTERS[selId]?.colors,
+    // painted bitmap is sized to the runtime's image convention → drops in aligned
+    onSave: (dataURL) => { Object.assign(ensurePart(), { src: dataURL, scale: 1, ox: 0, oy: 0, rot: 0 }); syncPartUI(); },
+  });
+});
 $('ref').addEventListener('change', (e) => { const f = e.target.files[0]; if (!f) return; const img = new Image(); img.onload = () => refImg = img; img.src = URL.createObjectURL(f); });
 
 // ── legs mode + weapon type / dual wield ────────────────────────────────────

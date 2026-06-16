@@ -120,6 +120,44 @@ function captureHandles(ctx, { fa, ba, fl, bl, shY, legsNone }) {
     kB: { ...P(bl.jx, bl.jy), role: 'knee', side: 'B' },
   });
 }
+// Isolated single-part vector + its image-space metrics, for the part painter
+// (designer). Lets the painter size its canvas to the runtime's image convention
+// — bone parts map image width→bone length (left edge = joint A, centerline =
+// the bone); point parts map image width→a reference span (centered) — so a
+// painted bitmap saved at scale 1 drops onto the rig aligned with the vector it
+// replaces. `render(ctx)` draws the part in that local frame.
+export function getPartDraw(spec, part, colors) {
+  const C = palette(colors || spec.colors || { primary: '#cfd8ec', secondary: '#5a647e', accent: '#ffce3f', glow: '#9fd0ff', trail: '#d3e4ff' });
+  const sk = spec.skel || {};
+  const limbCol = col(C, spec.limb?.color, C.primary);
+  const core = spec.limb?.coreColor || null;
+  const armW = spec.limb?.arm ?? 7, legW = spec.limb?.leg ?? 8;
+  const handR = spec.limb?.hand ?? 4.2, headR = sk.headR ?? 7;
+  const bone = (len, w, fill) => ({ kind: 'bone', len, band: Math.max(w * 3.6, 22),
+    render: (ctx) => segVector(ctx, 0, 0, len, 0, w, fill, C, core, spec) });
+  const point = (ref, render) => ({ kind: 'point', ref, render });
+  switch (part) {
+    case 'upperArm': return bone(sk.upper ?? 18, armW, limbCol);
+    case 'foreArm': return bone(sk.fore ?? 17, armW, limbCol);
+    case 'thigh': return bone(sk.thigh ?? 22, legW, limbCol);
+    case 'shin': return bone(sk.shin ?? 22, legW, limbCol);
+    case 'hand': return point(handR * 3.2, (ctx) => drawHand(ctx, 0, 0, handR, limbCol, C));
+    case 'foot': return point(28, (ctx) => drawFoot(ctx, 0, 0, limbCol, C, spec));
+    case 'head': return point(headR * 2.3, (ctx) => drawHead(ctx, 0, 0, C, {}, { ...spec, head: { ...spec.head, face: false } }));
+    case 'torso': {
+      const len = Math.abs((sk.shoulderY ?? -40) - (sk.hipY ?? 0)) || 36;
+      return { kind: 'bone', len, band: Math.max((spec.torso?.width ?? 9) * 5, 40),
+        render: (ctx) => { ctx.save(); ctx.rotate(Math.PI / 2); drawTorso(ctx, 0, 0, -len, C, spec); ctx.restore(); } };
+    }
+    case 'weapon': {
+      const w = spec.weapon || { type: 'none' }; const len = w.length ?? 56;
+      return { kind: 'bone', len, band: Math.max((w.width ?? 6) * 6, 36),
+        render: (ctx) => drawWeapon(ctx, C, w, 0) };
+    }
+  }
+  return null;
+}
+
 // per-part width/length multipliers (apply to vector AND image; default 1). Stored
 // in spec.images[name] so a part can be scaled even with no image assigned.
 function pscale(spec, name) {
