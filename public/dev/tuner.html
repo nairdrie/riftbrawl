@@ -62,6 +62,7 @@
         <label><input type="checkbox" id="facing" checked> face ▶</label>
         <label><input type="checkbox" id="freeze"> freeze</label>
         <label><input type="checkbox" id="bones"> bones</label>
+        <label>legs</label><select id="legs"><option value="two">two</option><option value="none">none + tail</option></select>
       </div>
       <div id="zoomRow"></div>
     </div>
@@ -113,6 +114,11 @@
 
     <div class="grp" id="gWeapon">
       <h2>Weapon</h2>
+      <div class="ctl">
+        <label>type</label>
+        <select id="wType"><option>none</option><option>sword</option><option>dagger</option><option>staff</option><option>hammer</option></select>
+        <label><input type="checkbox" id="dual"> dual wield</label>
+      </div>
       <div id="wpRows"></div>
     </div>
 

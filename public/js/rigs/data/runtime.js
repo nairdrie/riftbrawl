@@ -319,8 +319,11 @@ export function buildDataRig(spec) {
 
       const W = spec.weapon || { type: 'none' };
       const legsNone = spec.legs === 'none';
-      // weapons: explicit array (single or dual wield) or the legacy single weapon
-      const weapons = spec.weapons || (W.type !== 'none' || W.src ? [{ hand: 'front', ...W }] : []);
+      // weapons: an explicit array (advanced) or the single `weapon` — mirrored
+      // to the back hand when `dualWield` is set.
+      const weapons = spec.weapons || (W.type !== 'none' || W.src
+        ? (spec.dualWield ? [{ hand: 'front', ...W }, { hand: 'back', ...W }] : [{ hand: 'front', ...W }])
+        : []);
 
       const limbCol = col(C, spec.limb?.color, C.primary);
       const backCol = shade(limbCol, 0.74);

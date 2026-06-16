@@ -114,6 +114,16 @@ $('img').addEventListener('change', (e) => {
 $('clearPart').addEventListener('click', () => { if (workingSpec?.images) delete workingSpec.images[partSel.value]; syncPartUI(); });
 $('ref').addEventListener('change', (e) => { const f = e.target.files[0]; if (!f) return; const img = new Image(); img.onload = () => refImg = img; img.src = URL.createObjectURL(f); });
 
+// ── legs mode + weapon type / dual wield ────────────────────────────────────
+$('legs').addEventListener('change', () => { if (!editable) return; workingSpec.legs = $('legs').value; });
+$('wType').addEventListener('change', () => { if (!editable) return; workingSpec.weapon = workingSpec.weapon || {}; workingSpec.weapon.type = $('wType').value; });
+$('dual').addEventListener('change', () => { if (!editable) return; workingSpec.dualWield = $('dual').checked; });
+function syncBodyUI() {
+  $('legs').value = workingSpec?.legs || 'two';
+  $('wType').value = workingSpec?.weapon?.type || 'none';
+  $('dual').checked = !!workingSpec?.dualWield;
+}
+
 // ── animation poses (per-state / per-attack keyframes) ──────────────────────
 const ATTACKS = ['jab', 'ftilt', 'utilt', 'dtilt', 'nair', 'fair', 'bair', 'uair', 'dair', 'nb', 'sb', 'ub', 'db'];
 const A_STATES = ['idle', 'run', 'crouch', 'air', 'jumpsquat', 'shield', 'shieldStun', 'dizzy', 'roll', 'ledge', 'hitReel', 'grab', 'grabbed', ...ATTACKS];
@@ -206,6 +216,7 @@ function syncSlidersFromSpec() {
   for (const [, path] of [...SKEL, ...POSE, ...WEAPON]) ctl[path]?.set(getPath(workingSpec, path) ?? getPath(reedSpec, path) ?? 0);
   syncPartUI();
   if (typeof syncAPose === 'function') syncAPose();
+  if (typeof syncBodyUI === 'function') syncBodyUI();
 }
 function setEditableUI() {
   $('editState').textContent = editable ? 'editable ✓' : 'bespoke — view/play only';
