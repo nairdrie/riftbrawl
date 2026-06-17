@@ -3,6 +3,7 @@
 // presence / invites), matchmaking, and realtime match traffic.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import './env.js';        // load .env into process.env before anything reads it
 import express from 'express';
 import http from 'http';
 import path from 'path';

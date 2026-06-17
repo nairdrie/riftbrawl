@@ -150,14 +150,20 @@ pure presentation, so reskins touch none of the netcode).
 - **Live preview** — scrub every state (idle, run, all attacks, specials, shield,
   ledge…) with a facing flip and auto state-cycling.
 
-Access is gated to **designers**: set `DESIGN_ROLES` to a comma-separated list of
-fighter tags (e.g. `DESIGN_ROLES="nairdrie,teammate"`) and restart. Anyone signed
-in with a listed tag can open `/design` and save; everyone else just plays the
-game. Uploaded images and the `skins.json` document live in `SMASH_DATA_DIR` (the
-persistent volume) and are served read-only at `/skins/…`.
+Access is gated to **designers**: list the allowed fighter tags in `DESIGN_ROLES`.
+The easiest cross-platform way (Windows included) is a **`.env` file** in the
+project root — copy `.env.example` to `.env` and set it there; real environment
+variables still override the file. Anyone signed in with a listed tag can open
+`/design` and save; everyone else just plays the game. Uploaded images and the
+`skins.json` document live in `SMASH_DATA_DIR` (the persistent volume) and are
+served read-only at `/skins/…`.
 
 ```bash
-DESIGN_ROLES="yourtag" npm start     # then open http://localhost:3000/design
+cp .env.example .env        # then set DESIGN_ROLES=yourtag inside it
+npm start                   # open http://localhost:3000/design
+
+# …or pass it inline on macOS/Linux/git bash:
+DESIGN_ROLES="yourtag" npm start
 ```
 
 ## Deploying
