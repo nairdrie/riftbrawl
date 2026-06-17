@@ -13,6 +13,9 @@
 }
 
 * { box-sizing: border-box; }
+/* `el.hidden = true` must win over the `.gate`/`.app` display rules below — an
+   attribute+class selector outranks the bare class (and the UA [hidden] rule) */
+.gate[hidden], .app[hidden] { display: none; }
 html, body { height: 100%; }
 body {
   margin: 0;
