@@ -494,7 +494,10 @@ export function buildDataRig(spec) {
             const g = { handX: IP.handX, handY: IP.handY, wrist: IP.wrist,
               backHandX: IP.backHandX, backHandY: IP.backHandY, shoulderAngle: IP.shoulderAngle, lean: 0, lunge: 0 };
             if (M.ph === 'wind') OVR = lerpPose(g, P.wind ?? P.hit ?? g, M.wk);
-            else if (M.ph === 'hit') OVR = lerpPose(P.wind ?? g, P.hit ?? P.wind ?? g, easeOutBack(M.hk));
+            // hit must START where wind ENDED (P.wind ?? P.hit ?? g) — otherwise,
+            // when only `hit` is authored, the hit phase snaps back to neutral and
+            // re-swings, giving a double "down→up→down→up" jab.
+            else if (M.ph === 'hit') OVR = lerpPose(P.wind ?? P.hit ?? g, P.hit ?? P.wind ?? g, easeOutBack(M.hk));
             else OVR = lerpPose(P.hit ?? P.wind ?? g, P.rec ?? g, M.rk);
           }
         } else {
