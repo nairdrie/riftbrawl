@@ -1,15 +1,15 @@
-// Skin store tests: designer allowlist, image upload validation, and the
-// server-side sanitization that protects skins.json. Pure module — no server.
+// Skin store tests: image upload validation + the server-side sanitization that
+// protects skins.json. Pure module — no server, no Supabase. (Admin gating is an
+// auth concern enforced in server/index.js, covered by the integration test.)
 // Run: node test/skins.test.js
 
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 
-// isolate storage + configure the allowlist BEFORE importing the module
+// isolate storage BEFORE importing the module
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'skins-test-'));
 process.env.SMASH_DATA_DIR = dir;
-process.env.DESIGN_ROLES = 'TestDev, second';
 
 let failures = 0;
 function check(name, cond, info = '') {
@@ -18,13 +18,6 @@ function check(name, cond, info = '') {
 }
 
 const skins = await import('../server/skins.js');
-
-// ── designer allowlist (case-insensitive, comma/space separated) ──────────────
-check('isDesigner matches the allowlist case-insensitively', skins.isDesigner('testdev') === true);
-check('isDesigner accepts the second tag', skins.isDesigner('second') === true);
-check('isDesigner rejects everyone else', skins.isDesigner('intruder') === false);
-check('isDesigner rejects empty', skins.isDesigner('') === false);
-check('designersConfigured reflects the env', skins.designersConfigured() === true);
 
 // ── image upload validation ───────────────────────────────────────────────────
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';

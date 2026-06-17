@@ -4,7 +4,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
@@ -19,10 +18,17 @@ fs.mkdirSync(OUT, { recursive: true });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 async function main() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smash-poses-'));
+  // This tool only renders /dev/poses.html — it never signs in or touches the
+  // database, so placeholder Supabase config is enough to let the server boot.
   const server = spawn('node', ['server/index.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), SMASH_DATA_DIR: dataDir },
+    env: {
+      SUPABASE_URL: 'https://placeholder.supabase.co',
+      SUPABASE_ANON_KEY: 'placeholder',
+      SUPABASE_SERVICE_ROLE_KEY: 'placeholder',
+      ...process.env,
+      PORT: String(PORT),
+    },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise(res => server.stdout.on('data', d => String(d).includes('live') && res()));
@@ -66,7 +72,6 @@ async function main() {
   } finally {
     await browser.close();
     server.kill();
-    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }
 

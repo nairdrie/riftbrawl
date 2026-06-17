@@ -10,10 +10,12 @@ primary_region = 'ord'
 
 [env]
   SMASH_DATA_DIR = '/data'
-  # Comma-separated fighter tags allowed to open /design (the Skin Forge).
-  # Unset = locked for everyone. Prefer `fly secrets set DESIGN_ROLES=...`.
-  # DESIGN_ROLES = 'yourtag'
 
+# Accounts + the social graph live in Supabase — set the credentials as secrets
+# (kept out of this file):
+#   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
+# The volume below only persists the /design Skin Forge data (skins.json + the
+# uploaded part images). Create it once: fly volumes create smash_data --size 1
 [[mounts]]
   source = 'smash_data'
   destination = '/data'

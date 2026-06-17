@@ -223,6 +223,15 @@ input:focus {
   color: var(--ink-dim);
   margin-top: 14px;
 }
+.archway-mark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.34em;
+  color: var(--ink-dim);
+  opacity: 0.6;
+  margin-top: 20px;
+}
 
 .auth-card {
   width: min(400px, 92vw);
@@ -250,6 +259,13 @@ input:focus {
   display: flex; flex-direction: column; gap: 7px;
 }
 #auth-error { color: var(--red); font-size: 13px; min-height: 17px; }
+.auth-archway {
+  text-align: center;
+  font-family: var(--display); font-weight: 600;
+  font-size: 11px; letter-spacing: 0.16em;
+  color: var(--ink-dim); opacity: 0.65;
+}
+.auth-archway b { color: var(--ink); font-weight: 700; }
 
 /* ── topbar ──────────────────────────────────────────────────────────── */
 

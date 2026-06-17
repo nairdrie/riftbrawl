@@ -3,8 +3,8 @@
 // client loads and renders (looks are pure presentation — the deterministic sim
 // never touches them, so a global reskin needs no netcode changes). Skins live in
 // $SMASH_DATA_DIR/skins.json; uploaded part images live in $SMASH_DATA_DIR/skins/
-// and are served read-only at /skins/<file>. Writes are gated to designers listed
-// in the DESIGN_ROLES env allowlist.
+// and are served read-only at /skins/<file>. Writes are gated to admin accounts
+// (profiles.is_admin) — that check lives in server/index.js, next to auth.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import fs from 'fs';
@@ -34,26 +34,6 @@ const SKIN_PATH_RE = /^\/skins\/[A-Za-z0-9._-]+$/;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;     // 4MB decoded — generous for dev art
 
 const EXT_BY_MIME = { png: 'png', jpeg: 'jpg', jpg: 'jpg', webp: 'webp', gif: 'gif' };
-
-// ── designer allowlist ──────────────────────────────────────────────────────
-
-function designerSet() {
-  return new Set(
-    String(process.env.DESIGN_ROLES || '')
-      .split(/[,\s]+/)
-      .map(s => s.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
-export function isDesigner(username) {
-  if (!username) return false;
-  return designerSet().has(String(username).toLowerCase());
-}
-
-export function designersConfigured() {
-  return designerSet().size > 0;
-}
 
 // ── document load / persist ─────────────────────────────────────────────────
 

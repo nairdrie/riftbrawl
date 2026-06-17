@@ -5,7 +5,6 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
@@ -29,7 +28,11 @@ async function newPage(browser) {
   // fail fast instead of stalling page lifecycle events
   await page.setRequestInterception(true);
   page.on('request', (req) => {
-    if (req.url().startsWith(`http://localhost:${PORT}`)) req.continue();
+    const url = req.url();
+    // our own server, plus the two externals sign-in needs: the Supabase JS SDK
+    // (esm.sh) and the Supabase project itself. Everything else (fonts) is cut.
+    if (url.startsWith(`http://localhost:${PORT}`) ||
+        url.includes('esm.sh') || url.includes('supabase')) req.continue();
     else req.abort();
   });
   page.on('pageerror', e => console.log('[page exception]', e.message));
@@ -55,19 +58,27 @@ async function register(page, name) {
   console.log('registering', name);
   await page.bringToFront();
   await page.goto(`http://localhost:${PORT}/`, { waitUntil: 'domcontentloaded' });
-  await sleep(700);
+  await sleep(900);   // let Archway sign-in (Supabase SDK) initialise
   await click(page, '#auth-tabs button[data-mode="register"]');
-  await page.type('#auth-username', name);
+  // a fresh Archway account per run so reruns don't collide
+  const email = `${name.toLowerCase()}.${Date.now()}@riftbrawl.test`;
+  await page.type('#auth-email', email);
   await page.type('#auth-password', 'password1');
+  await page.type('#auth-username', name);
   await click(page, '#auth-submit');
-  await page.waitForSelector('#screen-menu.active', { timeout: 5000 });
+  await page.waitForSelector('#screen-menu.active', { timeout: 8000 });
 }
 
 async function main() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smash-vis-'));
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('visual.js needs a Supabase project (SUPABASE_URL, ' +
+      'SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY) and network access for ' +
+      'Archway sign-in. Skipping.');
+    process.exit(0);
+  }
   const server = spawn('node', ['server/index.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), SMASH_DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'inherit'],
   });
   await new Promise(res => server.stdout.on('data', d => String(d).includes('live') && res()));
@@ -221,7 +232,6 @@ async function main() {
   } finally {
     await browser.close();
     server.kill();
-    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }
 

@@ -3,7 +3,6 @@
 // presence / invites), matchmaking, and realtime match traffic.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import './env.js';        // load .env into process.env before anything reads it
 import express from 'express';
 import http from 'http';
 import path from 'path';
@@ -29,10 +28,23 @@ app.get('/healthz', (req, res) => {
   res.json({ ok: true, uptime: Math.round(process.uptime()), sessions: sessions.size, rooms: roomCount() });
 });
 
+// Public client config: the browser needs the Supabase URL + anon key to run
+// "Sign in with Archway" itself. (The anon key is meant to be public; the
+// service-role key never leaves the server.)
+app.get('/config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL || '',
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+    studio: 'Archway Games',
+    game: 'RIFTBRAWL',
+  });
+});
+
 // ── design / skins HTTP API ───────────────────────────────────────────────
-// Read is public (every client loads it to render); writes are gated to the
-// DESIGN_ROLES allowlist. Image uploads come over HTTP (the websocket caps
-// payloads at 8KB), so this router gets its own generous JSON body limit.
+// Read is public (every client loads it to render reskinned fighters); writes
+// require an admin Archway account (profiles.is_admin). The caller proves who
+// they are with the same Supabase access token the game socket uses. Image
+// uploads come over HTTP because the websocket caps payloads at 8KB.
 const api = express.Router();
 api.use(express.json({ limit: '8mb' }));
 
@@ -42,22 +54,16 @@ function tokenFrom(req) {
   return req.body?.token || req.query?.token || '';
 }
 
-// crude per-IP throttle for the password-checking login endpoint
-const loginHits = new Map();
-function loginThrottled(ip) {
-  const now = Date.now();
-  const rec = loginHits.get(ip) || { n: 0, at: now };
-  if (now - rec.at > 60000) { rec.n = 0; rec.at = now; }
-  rec.n++;
-  loginHits.set(ip, rec);
-  if (loginHits.size > 5000) loginHits.clear();
-  return rec.n > 20;
+// resolve the caller's profile from their Supabase access token (or null)
+async function userFrom(req) {
+  try { return await store.verifyToken(tokenFrom(req)); }
+  catch { return null; }
 }
 
-function requireDesigner(req, res, next) {
-  const user = store.verifyToken(tokenFrom(req));
+async function requireAdmin(req, res, next) {
+  const user = await userFrom(req);
   if (!user) return res.status(401).json({ error: 'Sign in required' });
-  if (!skins.isDesigner(user.username)) return res.status(403).json({ error: 'Designer access required' });
+  if (!user.is_admin) return res.status(403).json({ error: 'Admin access required' });
   req.user = user;
   next();
 }
@@ -65,34 +71,15 @@ function requireDesigner(req, res, next) {
 // public — all clients load this to render reskinned fighters
 api.get('/skins', (req, res) => res.json(skins.getDoc()));
 
-// who am I + can I design? (drives the /design page gate)
-api.get('/design/me', (req, res) => {
-  const user = store.verifyToken(tokenFrom(req));
-  if (!user) return res.json({ authed: false, designersConfigured: skins.designersConfigured() });
-  res.json({
-    authed: true,
-    username: user.username,
-    isDesigner: skins.isDesigner(user.username),
-    designersConfigured: skins.designersConfigured(),
-  });
-});
-
-// dedicated HTTP login for the design tool — avoids the websocket's
-// single-connection-per-account kick when you're also in a game tab
-api.post('/design/login', (req, res) => {
-  if (loginThrottled(req.ip)) return res.status(429).json({ error: 'Too many attempts — wait a minute' });
-  const r = store.login(String(req.body?.username || ''), String(req.body?.password || ''));
-  if (r.error) return res.status(401).json({ error: r.error });
-  res.json({
-    ok: true,
-    token: store.issueToken(r.user.uid),
-    username: r.user.username,
-    isDesigner: skins.isDesigner(r.user.username),
-  });
+// who am I + may I edit skins? (drives the /design page gate)
+api.get('/design/me', async (req, res) => {
+  const user = await userFrom(req);
+  if (!user) return res.json({ authed: false });
+  res.json({ authed: true, username: user.username, isAdmin: !!user.is_admin });
 });
 
 // upload one part image → returns the served path to bind into a slot
-api.post('/design/upload', requireDesigner, (req, res) => {
+api.post('/design/upload', requireAdmin, (req, res) => {
   try {
     const url = skins.saveImage(String(req.body?.charId || ''), String(req.body?.slot || ''), req.body?.dataUrl);
     res.json({ ok: true, url });
@@ -102,7 +89,7 @@ api.post('/design/upload', requireDesigner, (req, res) => {
 });
 
 // replace the whole skins document (validated/sanitized server-side)
-api.post('/design/skins', requireDesigner, (req, res) => {
+api.post('/design/skins', requireAdmin, (req, res) => {
   const saved = skins.saveDoc(req.body?.skins || {});
   res.json({ ok: true, doc: saved });
 });
@@ -116,8 +103,8 @@ const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8 * 1024 });
 // uid → Session (one active connection per account)
 const sessions = new Map();
 
-// message types that hit crypto or the database — much stricter budget
-const SENSITIVE = new Set(['register', 'login', 'resume', 'addFriend', 'invite']);
+// message types that hit auth or the database — much stricter budget
+const SENSITIVE = new Set(['auth', 'addFriend', 'invite']);
 
 class Session {
   constructor(ws) {
@@ -170,48 +157,61 @@ setRoomDissolvedHandler((roomId, uids) => {
   for (const uid of uids) {
     const s = sessionOf(uid);
     if (s?.room?.id === roomId) s.room = null;
-    notifyFriends(uid);
+    notifyFriends(uid);   // fire-and-forget (never rejects)
   }
 });
 
 // ── social payloads ─────────────────────────────────────────────────────────
 
-function socialPayload(user) {
-  const fresh = store.getUser(user.uid);
+async function socialPayload(user) {
+  const fresh = await store.getUser(user.uid);
+  if (!fresh) return null;
+  const [friends, requests] = await Promise.all([
+    store.getProfiles(fresh.friends),
+    store.getProfiles(fresh.requestsIn),
+  ]);
   return {
     t: 'social',
     me: { uid: fresh.uid, username: fresh.username, wins: fresh.wins, losses: fresh.losses },
-    friends: fresh.friends.map(fid => {
-      const f = store.getUser(fid);
-      const s = sessionOf(fid);
-      return f && {
+    friends: friends.map(f => {
+      const s = sessionOf(f.uid);
+      return {
         uid: f.uid, username: f.username,
         wins: f.wins, losses: f.losses,
         online: !!s, status: s ? s.status() : 'offline',
       };
-    }).filter(Boolean),
-    requests: fresh.requestsIn.map(rid => {
-      const r = store.getUser(rid);
-      return r && { uid: r.uid, username: r.username };
-    }).filter(Boolean),
+    }),
+    requests: requests.map(r => ({ uid: r.uid, username: r.username })),
   };
 }
 
-function pushSocial(uid) {
-  const s = sessionOf(uid);
-  if (s?.user) s.send(socialPayload(s.user));
+// these run from both awaited handlers and fire-and-forget event hooks, so they
+// swallow their own errors — a DB blip must never surface as a rejection
+async function pushSocial(uid) {
+  try {
+    const s = sessionOf(uid);
+    if (!s?.user) return;
+    const payload = await socialPayload(s.user);
+    if (payload) s.send(payload);
+  } catch (e) {
+    console.error('[social] pushSocial failed:', e.message);
+  }
 }
 
 // tell my friends my presence changed
-function notifyFriends(uid) {
-  const user = store.getUser(uid);
-  if (!user) return;
-  for (const fid of user.friends) pushSocial(fid);
+async function notifyFriends(uid) {
+  try {
+    const user = await store.getUser(uid);
+    if (!user) return;
+    await Promise.all(user.friends.map(fid => pushSocial(fid)));
+  } catch (e) {
+    console.error('[social] notifyFriends failed:', e.message);
+  }
 }
 
 // ── auth flow ───────────────────────────────────────────────────────────────
 
-function completeAuth(session, user) {
+async function completeAuth(session, user) {
   // kick any existing connection on this account
   const existing = sessionOf(user.uid);
   if (existing && existing !== session) {
@@ -221,12 +221,13 @@ function completeAuth(session, user) {
   }
   session.user = user;
   sessions.set(user.uid, session);
+  // the client already holds its own Supabase session — we just confirm the link
   session.send({
     t: 'auth', ok: true,
-    token: store.issueToken(user.uid),
     user: { uid: user.uid, username: user.username, wins: user.wins, losses: user.losses },
   });
-  session.send(socialPayload(user));
+  const payload = await socialPayload(user);
+  if (payload) session.send(payload);
   // reconnect support: if they have a live room, plug them back in
   const room = findRoomByUid(user.uid);
   if (room && room.reattach(user.uid, (obj) => session.send(obj))) {
@@ -235,7 +236,7 @@ function completeAuth(session, user) {
     session.room = null;
     session.send({ t: 'roomGone' });
   }
-  notifyFriends(user.uid);
+  await notifyFriends(user.uid);
 }
 
 // ── room membership helper ──────────────────────────────────────────────────
@@ -287,53 +288,44 @@ function cleanup(session, notify = true) {
 // ── message routing ─────────────────────────────────────────────────────────
 
 const handlers = {
-  register(session, msg) {
-    const r = store.register(String(msg.username || ''), String(msg.password || ''));
-    if (r.error) return session.send({ t: 'auth', ok: false, error: r.error });
-    completeAuth(session, r.user);
+  // single auth path: the browser signs in with Supabase ("your Archway
+  // account") and hands us its access token, which we verify and resolve to a
+  // profile. Covers first login, returning sessions, and reconnects alike.
+  async auth(session, msg) {
+    const user = await store.verifyToken(msg.token);
+    if (!user) return session.send({ t: 'auth', ok: false, error: 'Sign-in expired — please sign in again' });
+    await completeAuth(session, user);
   },
 
-  login(session, msg) {
-    const r = store.login(String(msg.username || ''), String(msg.password || ''));
-    if (r.error) return session.send({ t: 'auth', ok: false, error: r.error });
-    completeAuth(session, r.user);
-  },
-
-  resume(session, msg) {
-    const user = store.verifyToken(msg.token);
-    if (!user) return session.send({ t: 'auth', ok: false, error: 'Session expired' });
-    completeAuth(session, user);
-  },
-
-  addFriend(session, msg) {
-    const r = store.sendFriendRequest(session.uid, String(msg.username || ''));
+  async addFriend(session, msg) {
+    const r = await store.sendFriendRequest(session.uid, String(msg.username || ''));
     if (r.error) return session.send({ t: 'toast', kind: 'error', msg: r.error });
     session.send({ t: 'toast', kind: 'ok', msg: `Request sent to ${r.to.username}` });
-    pushSocial(session.uid);
-    pushSocial(r.to.uid);
+    await pushSocial(session.uid);
+    await pushSocial(r.to.uid);
   },
 
-  acceptFriend(session, msg) {
-    const r = store.acceptFriendRequest(session.uid, String(msg.uid || ''));
+  async acceptFriend(session, msg) {
+    const r = await store.acceptFriendRequest(session.uid, String(msg.uid || ''));
     if (r.error) return session.send({ t: 'toast', kind: 'error', msg: r.error });
-    pushSocial(session.uid);
-    pushSocial(r.to.uid);
+    await pushSocial(session.uid);
+    await pushSocial(r.to.uid);
   },
 
-  declineFriend(session, msg) {
-    store.declineFriendRequest(session.uid, String(msg.uid || ''));
-    pushSocial(session.uid);
+  async declineFriend(session, msg) {
+    await store.declineFriendRequest(session.uid, String(msg.uid || ''));
+    await pushSocial(session.uid);
   },
 
-  removeFriend(session, msg) {
-    store.removeFriend(session.uid, String(msg.uid || ''));
-    pushSocial(session.uid);
-    pushSocial(String(msg.uid || ''));
+  async removeFriend(session, msg) {
+    await store.removeFriend(session.uid, String(msg.uid || ''));
+    await pushSocial(session.uid);
+    await pushSocial(String(msg.uid || ''));
   },
 
-  invite(session, msg) {
+  async invite(session, msg) {
     const target = sessionOf(String(msg.uid || ''));
-    const me = store.getUser(session.uid);
+    const me = await store.getUser(session.uid);
     if (!me.friends.includes(msg.uid)) return session.send({ t: 'toast', kind: 'error', msg: 'Not your friend' });
     if (!target) return session.send({ t: 'toast', kind: 'error', msg: 'Friend is offline' });
     if (target.room || session.room) return session.send({ t: 'toast', kind: 'error', msg: 'Busy in a match' });
@@ -412,11 +404,11 @@ const handlers = {
   },
 };
 
-const UNAUTHED = new Set(['register', 'login', 'resume']);
+const UNAUTHED = new Set(['auth']);
 
 wss.on('connection', (ws) => {
   const session = new Session(ws);
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
     const fn = handlers[msg.t];
@@ -433,7 +425,7 @@ wss.on('connection', (ws) => {
       }
       return;
     }
-    try { fn(session, msg); } catch (e) {
+    try { await fn(session, msg); } catch (e) {
       console.error(`[ws] handler ${msg.t} failed:`, e);
     }
   });

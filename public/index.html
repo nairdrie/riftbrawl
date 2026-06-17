@@ -23,20 +23,25 @@
         <div class="logo-kicker">ENTER THE RIFT</div>
         <h1 class="logo-title">RIFT<span>BRAWL</span></h1>
         <div class="logo-tag">A 60HZ PLATFORM FIGHTER · 5 LEGENDS · 3 STOCKS · NO MERCY</div>
+        <div class="archway-mark">◢ ARCHWAY GAMES</div>
       </div>
       <form id="auth-form" class="card auth-card" autocomplete="off">
         <div id="auth-tabs">
           <button type="button" data-mode="login" class="active">SIGN IN</button>
           <button type="button" data-mode="register">NEW FIGHTER</button>
         </div>
-        <label>FIGHTER TAG
-          <input id="auth-username" maxlength="16" placeholder="e.g. SKYBREAKER" required />
+        <label>ARCHWAY EMAIL
+          <input id="auth-email" type="email" autocomplete="off" placeholder="you@example.com" required />
         </label>
         <label>PASSWORD
           <input id="auth-password" type="password" placeholder="••••••••" required />
         </label>
+        <label id="auth-tag-field" style="display:none">FIGHTER TAG
+          <input id="auth-username" maxlength="16" placeholder="e.g. SKYBREAKER" />
+        </label>
         <div id="auth-error"></div>
         <button id="auth-submit" class="btn-primary" type="submit">ENTER THE ARENA</button>
+        <div class="auth-archway">Sign in with your <b>Archway</b> account</div>
       </form>
     </div>
   </section>

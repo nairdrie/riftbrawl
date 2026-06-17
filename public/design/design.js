@@ -2,12 +2,14 @@
 // Skin Forge — the /design editor. Pick a legend, repaint its palette, and bind
 // uploaded images to body-part slots (which ride the existing animation). Saves a
 // global skin document that every client loads, so reskins show up in char-select
-// and in live matches. Gated to the DESIGN_ROLES allowlist (enforced server-side).
+// and in live matches. Gated to admin Archway accounts (profiles.is_admin), proven
+// with the same Supabase access token the game uses — enforced server-side.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { ACT } from '/shared/constants.js';
 import { CHARACTERS, CHARACTER_LIST } from '/shared/characters.js';
 import { drawFighter, drawPortrait } from '/js/fighters.js';
+import { initSupa, signIn, currentSession } from '/js/supa.js';
 import {
   loadSkins, getSkinsDoc, setSkinsDoc, setPreviewSkin,
   COLOR_KEYS, SLOT_DEFS, CHAR_SLOTS,
@@ -16,7 +18,7 @@ import {
 const $ = (s) => document.querySelector(s);
 const clone = (o) => JSON.parse(JSON.stringify(o ?? null));
 
-let token = localStorage.getItem('smash_token') || '';
+let supaReady = false;
 let doc = { version: 1, updated: 0, skins: {} };
 let work = {};                          // working copy of doc.skins (raw, editable)
 let cur = CHARACTER_LIST[0];
@@ -29,14 +31,20 @@ let clock = 0, lastTs = 0, cycleAt = 0;
 const rosterCanvases = new Map();
 const openSlots = new Set();
 
-// ── auth gate ────────────────────────────────────────────────────────────────
+// ── auth gate (Supabase / "Sign in with Archway") ───────────────────────────
 
-function authHeader() { return token ? { Authorization: 'Bearer ' + token } : {}; }
-function jsonAuth() { return { 'Content-Type': 'application/json', ...authHeader() }; }
+// the live Supabase access token — the SDK refreshes it for us, so fetch it
+// fresh per request rather than caching it
+async function token() {
+  try { return (await currentSession())?.access_token || ''; }
+  catch { return ''; }
+}
+async function authHeader() { const t = await token(); return t ? { Authorization: 'Bearer ' + t } : {}; }
+async function jsonAuth() { return { 'Content-Type': 'application/json', ...(await authHeader()) }; }
 
 async function checkMe() {
   try {
-    const r = await fetch('/api/design/me', { headers: authHeader() });
+    const r = await fetch('/api/design/me', { headers: await authHeader() });
     return await r.json();
   } catch { return { authed: false }; }
 }
@@ -45,34 +53,28 @@ function showGate(info) {
   $('#gate').hidden = false;
   $('#app').hidden = true;
   const msg = $('#gate-msg');
-  if (info && info.authed && !info.isDesigner) {
-    msg.textContent = info.designersConfigured
-      ? `Signed in as ${info.username}, but that tag isn't a designer.`
-      : 'No designers configured. Set the DESIGN_ROLES env var (comma-separated tags) and restart the server.';
+  if (info && info.authed && !info.isAdmin) {
+    msg.textContent = `Signed in as ${info.username}, but that account isn't an admin.`;
     msg.classList.remove('ok');
   }
 }
 
 $('#gate-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const username = $('#gate-user').value.trim();
+  if (!supaReady) { $('#gate-msg').textContent = 'Connecting to Archway…'; return; }
+  const email = $('#gate-email').value.trim();
   const password = $('#gate-pass').value;
-  if (!username || !password) return;
+  if (!email || !password) return;
   const btn = $('#gate-submit'); btn.disabled = true;
   const msg = $('#gate-msg'); msg.textContent = '';
   try {
-    const r = await fetch('/api/design/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-    const j = await r.json();
-    if (!r.ok) { msg.textContent = j.error || 'Sign-in failed'; return; }
-    token = j.token;
-    localStorage.setItem('smash_token', token);
-    if (!j.isDesigner) { showGate({ authed: true, isDesigner: false, username: j.username, designersConfigured: true }); return; }
-    await enterApp(j.username);
+    const r = await signIn(email, password);
+    if (r.error) { msg.textContent = r.error; return; }
+    const me = await checkMe();
+    if (me.authed && me.isAdmin) await enterApp(me.username);
+    else showGate(me);
   } catch {
-    msg.textContent = 'Network error';
+    msg.textContent = 'Sign-in failed';
   } finally {
     btn.disabled = false;
   }
@@ -83,7 +85,7 @@ $('#gate-form').addEventListener('submit', async (e) => {
 async function enterApp(username) {
   $('#gate').hidden = true;
   $('#app').hidden = false;
-  $('#who').textContent = username ? `designer · ${username}` : '';
+  $('#who').textContent = username ? `admin · ${username}` : '';
   await loadSkins();
   doc = getSkinsDoc();
   work = clone(doc.skins) || {};
@@ -316,7 +318,7 @@ async function uploadFile(slot, fileObj) {
   try { dataUrl = await readDataURL(fileObj); } catch { return toast('Could not read file', 'error'); }
   try {
     const r = await fetch('/api/design/upload', {
-      method: 'POST', headers: jsonAuth(),
+      method: 'POST', headers: await jsonAuth(),
       body: JSON.stringify({ charId: cur, slot, dataUrl }),
     });
     const j = await r.json();
@@ -351,7 +353,7 @@ $('#btn-save').addEventListener('click', async () => {
   const btn = $('#btn-save'); btn.disabled = true;
   try {
     const r = await fetch('/api/design/skins', {
-      method: 'POST', headers: jsonAuth(),
+      method: 'POST', headers: await jsonAuth(),
       body: JSON.stringify({ skins: prunedSkins() }),
     });
     const j = await r.json();
@@ -474,7 +476,15 @@ function toast(msg, kind = 'ok') {
 // ── boot ───────────────────────────────────────────────────────────────────
 
 (async function init() {
+  try {
+    await initSupa();
+    supaReady = true;
+  } catch (e) {
+    showGate(null);
+    $('#gate-msg').textContent = e.message || 'Archway sign-in is unavailable right now.';
+    return;
+  }
   const info = await checkMe();
-  if (info.authed && info.isDesigner) await enterApp(info.username);
+  if (info.authed && info.isAdmin) await enterApp(info.username);
   else showGate(info);
 })();

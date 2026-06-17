@@ -7,14 +7,14 @@
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node server/index.js",
+    "dev": "node --env-file-if-exists=.env server/index.js",
     "test": "node test/sim.test.js && node test/skins.test.js && node test/integration.test.js"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
+    "@supabase/supabase-js": "^2.45.0",
     "express": "^4.19.2",
     "ws": "^8.18.0"
   },
