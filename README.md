@@ -23,8 +23,8 @@ and nothing on disk.
 
 ```bash
 npm install
-node --env-file=.env server/index.js     # → http://localhost:3000
-# (or: export the vars and `npm start`)
+npm run dev        # loads .env if present → http://localhost:3000
+# prod: `npm start` (expects the vars already in the environment)
 ```
 
 Open two browsers (or a friend opens yours over LAN/internet), create your
