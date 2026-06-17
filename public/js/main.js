@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { net } from './net.js';
+import { initSupa, signIn, signUp, signOut, currentSession, getConfig, TAG_PATTERN } from './supa.js';
 import { sfx, toggleMute, isMuted, setSfxVolume, getSfxVolume } from './sfx.js';
 import { playMusic, setMusicVolume, getMusicVolume } from './music.js';
 import { MatchClient } from './game.js';
@@ -41,26 +42,53 @@ function toast(msg, kind = 'ok') {
   setTimeout(() => el.remove(), 3000);
 }
 
-// ── auth ────────────────────────────────────────────────────────────────────
+// ── auth (Sign in with Archway → Supabase) ───────────────────────────────────
 
 let authMode = 'login';
+let authReady = false;   // Supabase client initialised
 
 function setAuthMode(mode) {
   authMode = mode;
   $$('#auth-tabs button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   $('#auth-submit').textContent = mode === 'login' ? 'ENTER THE ARENA' : 'CREATE FIGHTER';
+  $('#auth-tag-field').style.display = mode === 'register' ? '' : 'none';
   $('#auth-error').textContent = '';
 }
 
 $$('#auth-tabs button').forEach(b => b.addEventListener('click', () => { sfx.click(); setAuthMode(b.dataset.mode); }));
 
-$('#auth-form').addEventListener('submit', (e) => {
+// hand the live Supabase access token to the game socket — used on first
+// sign-in and again on every websocket (re)connect
+async function authenticateSocket() {
+  const session = await currentSession();
+  if (session) net.send({ t: 'auth', token: session.access_token });
+  else { $('#auth-submit').disabled = false; show('screen-auth'); }
+}
+
+$('#auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const username = $('#auth-username').value.trim();
+  if (!authReady) { $('#auth-error').textContent = 'Connecting to Archway…'; return; }
+  const email = $('#auth-email').value.trim();
   const password = $('#auth-password').value;
-  if (!username || !password) return;
+  const tag = $('#auth-username').value.trim();
+  if (!email || !password) return;
+  if (authMode === 'register' && !TAG_PATTERN.test(tag)) {
+    $('#auth-error').textContent = 'Fighter tag: 3–16 letters, numbers or _';
+    return;
+  }
   $('#auth-submit').disabled = true;
-  net.send({ t: authMode, username, password });
+  $('#auth-error').textContent = '';
+  const r = authMode === 'login'
+    ? await signIn(email, password)
+    : await signUp(email, password, tag);
+  if (r.error) { $('#auth-submit').disabled = false; $('#auth-error').textContent = r.error; sfx.error(); return; }
+  if (r.needsConfirm) {
+    $('#auth-submit').disabled = false;
+    $('#auth-error').textContent = 'Check your email to confirm your Archway account, then sign in.';
+    setAuthMode('login');
+    return;
+  }
+  authenticateSocket();   // server confirms via the 'auth' message below
 });
 
 net.on('auth', (msg) => {
@@ -69,23 +97,21 @@ net.on('auth', (msg) => {
     if ($('#screen-auth').classList.contains('active')) {
       $('#auth-error').textContent = msg.error || 'Authentication failed';
     }
-    localStorage.removeItem('smash_token');
     show('screen-auth');
     return;
   }
-  localStorage.setItem('smash_token', msg.token);
   me = msg.user;
   updateUserChip();
   if (!match && !room) show('screen-menu');
   sfx.ok();
 });
 
-let replaced = false; // signed in from another tab — stop auto-resuming
+let replaced = false; // signed in from another tab — stop auto-reauthenticating
 
 net.on('_open', () => {
-  const token = localStorage.getItem('smash_token');
-  if (token && !replaced) net.send({ t: 'resume', token });
-  else show('screen-auth');
+  // re-assert identity on every (re)connect using the Supabase session we hold
+  if (authReady && !replaced) authenticateSocket();
+  else if (!authReady) show('screen-auth');
   $('#conn-banner').classList.remove('visible');
 });
 
@@ -105,8 +131,8 @@ net.on('_close', () => {
   if (match && !match.over) match.connectionLost();
 });
 
-$('#btn-logout').addEventListener('click', () => {
-  localStorage.removeItem('smash_token');
+$('#btn-logout').addEventListener('click', async () => {
+  await signOut();
   location.reload();
 });
 
@@ -736,8 +762,9 @@ let oskShift = false;
 const OSK_ROWS = [
   ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0'],
   ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'],
-  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L', '_'],
+  ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'],
   ['⇧', 'Z', 'X', 'C', 'V', 'B', 'N', 'M', '⌫'],
+  ['@', '.', '_', '-'],
   ['CANCEL', 'DONE'],
 ];
 
@@ -910,6 +937,21 @@ buildCollection();
 refreshSelectUI();
 menuBackground();
 show('screen-auth');
+setAuthMode('login');
 syncRotateModal();
 maybeShowPadRecommend();
+
+// bring up Archway sign-in, then connect the game socket. The first '_open'
+// only re-authenticates once this resolves (authReady gates it).
+initSupa()
+  .then(() => {
+    authReady = true;
+    const cfg = getConfig();
+    if (cfg.studio) $$('.archway-mark').forEach(el => { el.textContent = `◢ ${cfg.studio}`; });
+    if (net.connected) authenticateSocket();   // socket already opened first
+  })
+  .catch((e) => {
+    console.error('[auth] Supabase init failed:', e);
+    $('#auth-error').textContent = e.message || 'Archway sign-in is unavailable right now.';
+  });
 net.connect();

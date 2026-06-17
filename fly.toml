@@ -8,12 +8,9 @@ primary_region = 'ord'
 
 [build]
 
-[env]
-  SMASH_DATA_DIR = '/data'
-
-[[mounts]]
-  source = 'smash_data'
-  destination = '/data'
+# Accounts + social graph now live in Supabase, so there's no persistent volume.
+# Set the Supabase credentials as secrets (kept out of this file):
+#   fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
 
 [http_service]
   internal_port = 3000

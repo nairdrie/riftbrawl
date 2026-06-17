@@ -1,22 +1,54 @@
 // End-to-end integration test: boots the real server, drives two websocket
-// clients through register → friend → invite → char select → a full match.
+// clients through Archway sign-in → friend → invite → char select → a full
+// match. Accounts/auth are real Supabase, so this test needs a project:
+//
+//   SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+//
+// (run supabase/schema.sql against it first). Without those it skips cleanly.
 // Run: npm test
 
 import { spawn } from 'child_process';
 import WebSocket from 'ws';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import { createClient } from '@supabase/supabase-js';
 import { fileURLToPath } from 'url';
+import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = 3107;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let failures = 0;
 
+const { SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.log('SKIP integration test — set SUPABASE_URL, SUPABASE_ANON_KEY and ' +
+    'SUPABASE_SERVICE_ROLE_KEY (with supabase/schema.sql applied) to run it.');
+  process.exit(0);
+}
+
+const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+const anon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+
 function check(name, cond) {
   console.log(`${cond ? '  ✓' : '  ✗ FAIL'} ${name}`);
   if (!cond) failures++;
+}
+
+const createdUserIds = [];
+
+// Provision a confirmed Archway account with a unique fighter tag, then sign in
+// to grab an access token (the credential the game socket authenticates with).
+async function makeAccount(base) {
+  const username = `${base}${Math.random().toString(36).slice(2, 6)}`;
+  const email = `${username}@riftbrawl.test`;
+  const password = 'hunter2!';
+  const { data, error } = await admin.auth.admin.createUser({
+    email, password, email_confirm: true, user_metadata: { username },
+  });
+  if (error) throw new Error(`createUser(${base}): ${error.message}`);
+  createdUserIds.push(data.user.id);
+  const { data: s, error: e2 } = await anon.auth.signInWithPassword({ email, password });
+  if (e2) throw new Error(`signIn(${base}): ${e2.message}`);
+  return { uid: data.user.id, username, email, password, token: s.session.access_token };
 }
 
 class Client {
@@ -59,10 +91,9 @@ class Client {
 }
 
 async function main() {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smash-test-'));
   const server = spawn('node', ['server/index.js'], {
     cwd: path.join(__dirname, '..'),
-    env: { ...process.env, PORT: String(PORT), SMASH_DATA_DIR: dataDir },
+    env: { ...process.env, PORT: String(PORT) },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   server.stderr.on('data', d => process.stderr.write(`[server] ${d}`));
@@ -79,35 +110,44 @@ async function main() {
     check('serves index.html', html.includes('RIFTBRAWL'));
     const sim = await (await fetch(`http://localhost:${PORT}/shared/sim.js`)).text();
     check('serves shared sim module', sim.includes('export function step'));
+    const cfg = await (await fetch(`http://localhost:${PORT}/config`)).json();
+    check('serves Archway/Supabase client config', !!cfg.supabaseUrl && !!cfg.supabaseAnonKey);
 
-    // ── auth
+    // ── accounts (real Supabase) + token auth over the socket
+    const alice = await makeAccount('alice');
+    const bob = await makeAccount('bob');
+
     const a = new Client('alice');
     const b = new Client('bob');
     await a.connect();
     await b.connect();
 
-    a.send({ t: 'register', username: 'alice', password: 'hunter2' });
+    a.send({ t: 'auth', token: alice.token });
     const authA = await a.wait('auth');
-    check('alice registers', authA.ok && authA.user.username === 'alice');
-    check('alice gets a token', typeof authA.token === 'string' && authA.token.length > 20);
+    check('alice authenticates', authA.ok && authA.user.username === alice.username);
+    check('auth resolves the fighter profile', authA.user.uid === alice.uid);
 
-    b.send({ t: 'register', username: 'bob', password: 'hunter2' });
+    b.send({ t: 'auth', token: bob.token });
     const authB = await b.wait('auth');
-    check('bob registers', authB.ok);
+    check('bob authenticates', authB.ok);
 
-    // duplicate username rejected
-    const c0 = new Client('dup');
+    // garbage token rejected
+    const c0 = new Client('badtoken');
     await c0.connect();
-    c0.send({ t: 'register', username: 'ALICE', password: 'xx1234' });
-    const dup = await c0.wait('auth');
-    check('duplicate tag rejected (case-insensitive)', !dup.ok);
-    // wrong password rejected
-    c0.send({ t: 'login', username: 'alice', password: 'wrong' });
-    check('wrong password rejected', !(await c0.wait('auth')).ok);
-    // token resume works
-    c0.send({ t: 'resume', token: authB.token });
+    c0.send({ t: 'auth', token: 'not-a-real-jwt' });
+    check('bad token rejected', !(await c0.wait('auth')).ok);
+    // duplicate fighter tag is impossible (unique constraint via sign-up trigger)
+    const dupTag = alice.username;
+    const dupRes = await admin.auth.admin.createUser({
+      email: `dup-${dupTag}@riftbrawl.test`, email_confirm: true,
+      password: 'hunter2!', user_metadata: { username: dupTag },
+    });
+    if (dupRes.data?.user?.id) createdUserIds.push(dupRes.data.user.id);
+    check('duplicate fighter tag rejected', !!dupRes.error);
+    // re-auth on a fresh socket works (reconnect / resume)
+    c0.send({ t: 'auth', token: bob.token });
     const resumed = await c0.wait('auth');
-    check('token resume works', resumed.ok && resumed.user.username === 'bob');
+    check('token re-auth works', resumed.ok && resumed.user.username === bob.username);
     // bob's original socket got replaced — reconnect bob
     await b.wait('error', 3000).catch(() => {});
     b.ws.close();
@@ -115,24 +155,24 @@ async function main() {
     await b2.connect();
     c0.ws.close();
     await new Promise(r => setTimeout(r, 200));
-    b2.send({ t: 'resume', token: authB.token });
+    b2.send({ t: 'auth', token: bob.token });
     check('bob reconnects', (await b2.wait('auth')).ok);
 
     // ── friends
     a.drain('social'); b2.drain('social');
-    a.send({ t: 'addFriend', username: 'bob' });
+    a.send({ t: 'addFriend', username: bob.username });
     await a.wait('toast');
     const socB = await b2.wait('social', 5000, m => m.requests?.length > 0);
-    check('bob sees friend request', socB.requests[0].username === 'alice');
+    check('bob sees friend request', socB.requests[0].username === alice.username);
     b2.send({ t: 'acceptFriend', uid: socB.requests[0].uid });
     const socA = await a.wait('social', 5000, m => m.friends?.length > 0);
-    check('alice sees bob as friend & online', socA.friends[0].username === 'bob' && socA.friends[0].online);
+    check('alice sees bob as friend & online', socA.friends[0].username === bob.username && socA.friends[0].online);
 
     // ── invite → room
     const bobUid = socA.friends[0].uid;
     a.send({ t: 'invite', uid: bobUid });
     const inv = await b2.wait('invited');
-    check('bob receives invite', inv.from.username === 'alice');
+    check('bob receives invite', inv.from.username === alice.username);
     b2.send({ t: 'acceptInvite', uid: inv.from.uid });
     const roomA = await a.wait('room');
     const roomB = await b2.wait('room');
@@ -147,7 +187,7 @@ async function main() {
       startA.players.some(p => p.charId === 'volt') && startA.players.some(p => p.charId === 'aegis'));
 
     // ── gameplay: drive inputs, observe snapshots
-    const myIdxA = startA.players.findIndex(p => p.uid === authA.user.uid);
+    const myIdxA = startA.players.findIndex(p => p.uid === alice.uid);
     const oppIdx = 1 - myIdxA;
     let seq = 0;
     const driver = setInterval(() => {
@@ -165,7 +205,7 @@ async function main() {
     await a.wait('snap', 10000, m => m.s.ph === 1);
     a.send({ t: 'pause' });
     const pausedMsg = await b2.wait('paused', 5000);
-    check('pause reaches the other player with the pauser name', pausedMsg.by === 'alice');
+    check('pause reaches the other player with the pauser name', pausedMsg.by === alice.username);
     await sleep(300);
     a.drain('snap'); b2.drain('snap');
     await sleep(500);
@@ -193,29 +233,24 @@ async function main() {
     const back = await a.wait('room', 5000);
     check('room returns to select for rematch', back.phase === 'select');
 
-    // ── win recorded
-    a.drain('social');
-    a.send({ t: 'addFriend', username: 'bob' }); // no-op to trigger nothing
-    await a.wait('toast').catch(() => {});
-
     // ── un-ready works and select-phase disconnects hold the seat
     a.drain('room'); b2.drain('room');
     a.send({ t: 'ready', charId: 'volt' });
-    await a.wait('room', 5000, m => m.players?.some(p => p.username === 'alice' && p.ready));
+    await a.wait('room', 5000, m => m.players?.some(p => p.username === alice.username && p.ready));
     a.send({ t: 'unready' });
-    const unr = await a.wait('room', 5000, m => m.players?.some(p => p.username === 'alice' && !p.ready));
+    const unr = await a.wait('room', 5000, m => m.players?.some(p => p.username === alice.username && !p.ready));
     check('un-ready cancels the ready state', !!unr);
     // bob's socket blips during char select — seat held, lobby shows dc
     b2.ws.terminate();
-    const dcLobby = await a.wait('room', 5000, m => m.players?.some(p => p.username === 'bob' && p.dc));
+    const dcLobby = await a.wait('room', 5000, m => m.players?.some(p => p.username === bob.username && p.dc));
     check('select-phase disconnect holds the seat (no instant dissolve)', !!dcLobby);
     const b2b = new Client('bob2b');
     await b2b.connect();
-    b2b.send({ t: 'resume', token: authB.token });
+    b2b.send({ t: 'auth', token: bob.token });
     await b2b.wait('auth');
     const backLobby = await b2b.wait('room', 5000, m => m.phase === 'select');
     check('reconnect during select rejoins the lobby', !!backLobby);
-    await a.wait('room', 5000, m => m.players?.some(p => p.username === 'bob' && !p.dc));
+    await a.wait('room', 5000, m => m.players?.some(p => p.username === bob.username && !p.dc));
     // restore b2 handle for the tests below
     b2.ws = b2b.ws; b2.msgs = b2b.msgs; b2.waiters = b2b.waiters;
     b2b.ws.removeAllListeners('message');
@@ -230,7 +265,7 @@ async function main() {
     a.drain('paused'); b2.drain('paused');
     a.send({ t: 'ready', charId: 'volt' });
     b2.send({ t: 'ready', charId: 'tide' });
-    const rcStart = await a.wait('start');
+    await a.wait('start');
     await b2.wait('start');
     await a.wait('snap', 10000, m => m.s.ph === 1);   // countdown done
     b2.ws.terminate();                                 // hard drop, no goodbye
@@ -239,7 +274,7 @@ async function main() {
     // bob comes back on a fresh socket with his token
     const b3 = new Client('bob3');
     await b3.connect();
-    b3.send({ t: 'resume', token: authB.token });
+    b3.send({ t: 'auth', token: bob.token });
     await b3.wait('auth');
     const rs = await b3.wait('resync', 5000);
     check('reconnect resyncs full match state', Array.isArray(rs.s.pl) && rs.s.pl.length === 2 && rs.players.length === 2);
@@ -256,7 +291,7 @@ async function main() {
     // ── rate limiting: sensitive ops are budget-capped
     const flood = new Client('flood');
     await flood.connect();
-    for (let i = 0; i < 40; i++) flood.send({ t: 'login', username: 'alice', password: 'wrong' });
+    for (let i = 0; i < 40; i++) flood.send({ t: 'auth', token: 'nope' });
     await sleep(1500);
     const authReplies = flood.msgs.filter(m => m.t === 'auth').length;
     check('sensitive message flood is rate-limited', authReplies <= 12 && authReplies >= 5);
@@ -267,9 +302,10 @@ async function main() {
     check('healthz reports server state', health.ok === true && typeof health.rooms === 'number');
 
     // ── practice mode vs CPU
+    const dana = await makeAccount('dana');
     const d = new Client('dana');
     await d.connect();
-    d.send({ t: 'register', username: 'dana', password: 'pass1234' });
+    d.send({ t: 'auth', token: dana.token });
     await d.wait('auth');
     d.send({ t: 'practice' });
     const pRoom = await d.wait('room');
@@ -307,7 +343,10 @@ async function main() {
     failures++;
   } finally {
     server.kill();
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    // scrub the test accounts (cascades to profiles/friendships/requests)
+    for (const id of createdUserIds) {
+      await admin.auth.admin.deleteUser(id).catch(() => {});
+    }
   }
 
   console.log(failures ? `\n${failures} failure(s)` : '\nALL PASS');
