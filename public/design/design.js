@@ -9,6 +9,7 @@
 import { ACT } from '/shared/constants.js';
 import { CHARACTERS, CHARACTER_LIST } from '/shared/characters.js';
 import { drawFighter, drawPortrait } from '/js/fighters.js';
+import { setAnchorCapture } from '/js/rigs/common.js';
 import { initSupa, signIn, currentSession } from '/js/supa.js';
 import { openPaint } from '/design/paint.js';
 import {
@@ -159,9 +160,11 @@ function selectChar(id) {
   states = makeStates(CHARACTERS[cur]);
   if (stateIdx >= states.length) stateIdx = 0;
   $('#panel-title').textContent = `${CHARACTERS[cur].name} — ${CHARACTERS[cur].title}`;
+  seedHistory(cur);
   buildStateSelect();
   buildPalette();
   buildSlots();
+  buildHistory();
   refreshRosterActive();
 }
 
@@ -192,10 +195,11 @@ function buildPalette() {
       reset.hidden = false;
       applyPreview(cur); refreshDirty(); refreshRosterActive();
     });
+    swatch.addEventListener('change', () => recordHistory(`recolour ${key}`));
     reset.addEventListener('click', () => {
       if (work[cur]?.colors) { delete work[cur].colors[key]; if (!Object.keys(work[cur].colors).length) delete work[cur].colors; }
       swatch.value = defaults[key]; hex.textContent = defaults[key]; reset.hidden = true;
-      applyPreview(cur); refreshDirty(); refreshRosterActive();
+      applyPreview(cur); refreshDirty(); refreshRosterActive(); recordHistory(`reset ${key}`);
     });
 
     row.append(swatch, lbl, hex, reset);
@@ -260,6 +264,7 @@ function buildSlots() {
       title: `${CHARACTERS[cur].name} · ${def.label}`,
       startUrl: data?.img || null,
       color: CHARACTERS[cur].colors.primary,
+      reference: (refCtx) => renderPartReference(refCtx, cur, id),
       onApply: (dataUrl) => uploadDataUrl(id, dataUrl),
     }));
     actions.append(uploadBtn, paintBtn);
@@ -275,8 +280,8 @@ function buildSlots() {
       );
 
       const foot = document.createElement('div'); foot.className = 'slot-foot';
-      foot.appendChild(checkbox('Flip', !!data.flip, v => setSlot(id, 'flip', v)));
-      if (def.hide) foot.appendChild(checkbox('Replace base art', !!data.hideBase, v => setSlot(id, 'hideBase', v)));
+      foot.appendChild(checkbox('Flip', !!data.flip, v => { setSlot(id, 'flip', v); recordHistory(`flip ${id}`); }));
+      if (def.hide) foot.appendChild(checkbox('Replace base art', !!data.hideBase, v => { setSlot(id, 'hideBase', v); recordHistory(`${v ? 'replace' : 'overlay'} ${id}`); }));
       const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = 'Remove';
       rm.addEventListener('click', () => removeSlot(id));
       foot.appendChild(rm);
@@ -299,6 +304,7 @@ function rangeRow(label, min, max, step, value, fmt, oninput) {
     val.textContent = fmt(v);
     oninput(v);
   });
+  range.addEventListener('change', () => recordHistory(`adjust ${label.toLowerCase()}`));   // one restore point per drag
   row.append(lbl, range, val);
   return row;
 }
@@ -325,6 +331,7 @@ function removeSlot(id) {
   }
   openSlots.delete(cur + ':' + id);
   applyPreview(cur); refreshDirty(); refreshRosterActive(); buildSlots();
+  recordHistory(`remove ${id}`);
 }
 
 async function uploadFile(slot, fileObj) {
@@ -353,6 +360,7 @@ async function uploadDataUrl(slot, dataUrl) {
     };
     openSlots.add(cur + ':' + slot);
     applyPreview(cur); refreshDirty(); refreshRosterActive(); buildSlots();
+    recordHistory(`art → ${slot}`);
     toast('Art bound to ' + slot, 'ok');
   } catch {
     toast('Upload failed', 'error');
@@ -384,6 +392,7 @@ $('#btn-save').addEventListener('click', async () => {
     work = clone(doc.skins) || {};
     applyAllPreviews();
     buildPalette(); buildSlots(); refreshRosterActive(); refreshDirty();
+    recordHistory('saved');
     toast('Saved — live for all players', 'ok');
   } catch {
     toast('Save failed', 'error'); refreshDirty();
@@ -394,8 +403,86 @@ $('#btn-revert').addEventListener('click', () => {
   work[cur] = clone(doc.skins?.[cur]) || {};
   for (const k of [...openSlots]) if (k.startsWith(cur + ':')) openSlots.delete(k);
   applyPreview(cur); buildPalette(); buildSlots(); refreshRosterActive(); refreshDirty();
+  recordHistory('revert to saved');
   toast('Reverted ' + CHARACTERS[cur].name, 'ok');
 });
+
+// ── part reference (the faint "ghost" behind the paint canvas) ────────────────
+// Render the idle fighter once with anchor capture on, then blit it into the
+// paint reference canvas so the chosen part sits centred and sized exactly where
+// its decal lands (the same mapping drawFighter's decal() uses).
+function renderPartReference(refCtx, charId, slot) {
+  const W = refCtx.canvas.width;
+  refCtx.clearRect(0, 0, W, refCtx.canvas.height);
+  const OFF = 380;
+  const off = document.createElement('canvas'); off.width = off.height = OFF;
+  const octx2 = off.getContext('2d');
+  octx2.save();
+  octx2.translate(OFF / 2, OFF * 0.82);
+  octx2.scale(1.8, 1.8);
+  const cap = new Map();
+  setAnchorCapture(cap);
+  try { drawFighter(octx2, fakePlayer(CHARACTERS[charId], { facing: 1, uid: `ref:${charId}` }), 0.4, { skin: null }); }
+  finally { setAnchorCapture(null); }
+  octx2.restore();
+  const a = cap.get(slot);
+  if (!a) return;                                   // slot not exposed for this rig
+  const dev = a.m.transformPoint(a.ax, a.ay);
+  const ds = Math.hypot(a.m.a, a.m.b) || 1;
+  const sizeDev = a.base * ds;
+  if (!(sizeDev > 0)) return;
+  const k = W / sizeDev;
+  refCtx.save();
+  refCtx.setTransform(k, 0, 0, k, W / 2 - dev.x * k, W / 2 - dev.y * k);
+  refCtx.imageSmoothingEnabled = true;
+  refCtx.drawImage(off, 0, 0);
+  refCtx.restore();
+}
+
+// ── version history (whole-character restore points) ──────────────────────────
+const history = {};   // charId -> [{ label, ts, snap }]
+
+function seedHistory(c) {
+  if (!history[c]) history[c] = [{ label: 'loaded', ts: Date.now(), snap: clone(work[c] || {}) }];
+}
+function recordHistory(label) {
+  const arr = history[cur] || (history[cur] = []);
+  const snap = clone(work[cur] || {});
+  const last = arr[arr.length - 1];
+  if (last && JSON.stringify(last.snap) === JSON.stringify(snap)) { last.label = label; last.ts = Date.now(); }
+  else { arr.push({ label, ts: Date.now(), snap }); if (arr.length > 40) arr.shift(); }
+  buildHistory();
+}
+function revertHistory(i) {
+  const e = history[cur]?.[i];
+  if (!e) return;
+  work[cur] = clone(e.snap) || {};
+  applyPreview(cur); buildPalette(); buildSlots(); refreshRosterActive(); refreshDirty(); buildHistory(i);
+  toast(`Reverted to “${e.label}”`, 'ok');
+}
+function relTime(ts) {
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 5) return 'just now';
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  return `${Math.floor(s / 3600)}h ago`;
+}
+function buildHistory(activeIdx = -1) {
+  const wrap = $('#history');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const arr = history[cur] || [];
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const e = arr[i];
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'hist-row' + (i === activeIdx ? ' active' : '');
+    row.innerHTML = `<span class="hist-label">${escapeText(e.label)}</span><span class="hist-time">${relTime(e.ts)}</span>`;
+    row.addEventListener('click', () => revertHistory(i));
+    wrap.appendChild(row);
+  }
+}
+function escapeText(s) { const d = document.createElement('span'); d.textContent = String(s); return d.innerHTML; }
 
 // ── preview ──────────────────────────────────────────────────────────────────
 

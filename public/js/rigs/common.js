@@ -614,7 +614,18 @@ export function slotHidden(skin, name) {
   return !!(d && d.img && d.hideBase);
 }
 
+// Anchor capture: while a Map is installed, every decal()/recordAnchor() records
+// the part's live canvas transform + reference size. The /design tool renders one
+// pass with this on to draw a "ghost" of a part positioned exactly where its decal
+// lands, so artists can trace/align. No effect on normal rendering.
+let _capture = null;
+export function setAnchorCapture(map) { _capture = map || null; }
+export function recordAnchor(ctx, name, ax, ay, baseSize) {
+  if (_capture) _capture.set(name, { m: ctx.getTransform(), ax, ay, ang: 0, base: baseSize });
+}
+
 export function decal(ctx, skin, name, ax, ay, ang = 0, baseSize = 1) {
+  if (_capture) _capture.set(name, { m: ctx.getTransform(), ax, ay, ang, base: baseSize });
   const d = skin && skin.slots && skin.slots[name];
   if (!d || !d.img || !d.img.complete || !d.img.naturalWidth) return;
   const img = d.img;

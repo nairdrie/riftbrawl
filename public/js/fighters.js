@@ -7,7 +7,7 @@
 
 import { ACT, SMASH_CHARGE } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
-import { deriveAnim, drawStar as starFn, decal, slotHidden, TAU } from './rigs/common.js';
+import { deriveAnim, drawStar as starFn, decal, slotHidden, recordAnchor, TAU } from './rigs/common.js';
 import { getRenderSkin } from './skins.js';
 
 const SMASH_MOVES = new Set(['ftilt', 'utilt', 'dtilt']);
@@ -71,6 +71,7 @@ export function drawFighter(ctx, p, t, opts = {}) {
   // whole-body replacement: one uploaded image stands in for the entire rig (it
   // still rides facing / squash / tumble from this frame). Otherwise draw the rig,
   // which stamps its own per-part decals where slots are bound.
+  recordAnchor(ctx, 'root', 0, -52, 120);   // for the design tool's part reference
   if (slotHidden(skin, 'root')) {
     decal(ctx, skin, 'root', 0, -52, 0, 120);
   } else {
