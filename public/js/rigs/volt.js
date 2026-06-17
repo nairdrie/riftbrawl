@@ -12,6 +12,7 @@ import {
   TAU, lerp, palette, paint, ink, disc, roundRect, poly,
   stroke2, shade, ikSolve, platedSeg, jointCap, glowOn, glowOff,
   chain, chainLocal, ribbon, swingTrail, bolt, chargeOrb, dizzyStars, face,
+  decal, slotHidden,
 } from './common.js';
 
 // ── limb metrics (local units; feet at 0, +x forward, y up = negative) ───────
@@ -113,7 +114,7 @@ function drawLeg(ctx, hx, hy, foot, bend, C, o) {
 }
 
 export const voltRig = {
-  draw(ctx, p, char, A, t) {
+  draw(ctx, p, char, A, t, skin) {
     const C = palette(char.colors);
     const s = char.scale;
     const M = A.move;
@@ -229,8 +230,10 @@ export const voltRig = {
 
     // ── back leg (far, darker) ───────────────────────────────────────────────
     drawLeg(ctx, -3.5, hipY, f2, bend2, C, { fill: C.secondary, tw: 7, sw: 5.6, knee: 3.6 });
+    decal(ctx, skin, 'backFoot', f2[0], f2[1], 0, 16);
     // ── front leg (near, bright) ─────────────────────────────────────────────
     drawLeg(ctx, 3.5, hipY, f1, bend1, C, { fill: C.primary, tw: 7.6, sw: 6, knee: 4 });
+    decal(ctx, skin, 'frontFoot', f1[0], f1[1], 0, 16);
 
     // ── pelvis wedge + belt (tie the legs to the torso) ──────────────────────
     poly(ctx, [[-8, hipY - 3], [8, hipY - 3], [6, hipY + 5], [-6, hipY + 5]]);
@@ -287,15 +290,18 @@ export const voltRig = {
       c.moveTo(-4, shY + 3); c.lineTo(3, shY + 8); c.lineTo(-3, shY + 12); c.lineTo(4, shY + 17);
     }, 1.1, '#ffffff', null, 0);
     glowOff(ctx);
+    decal(ctx, skin, 'torso', 0, (shY + hipY) / 2, 0, 30);
 
     // ── back arm (far) — drawn behind the head/front arm ─────────────────────
     const handB = drawArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C,
       { uw: 6, fw: 5, elbow: 3.4, fill: C.secD });
-    fist(ctx, handB[0], handB[1], 3.8, wAB, C, C.secD);
+    if (!slotHidden(skin, 'backHand')) fist(ctx, handB[0], handB[1], 3.8, wAB, C, C.secD);
+    decal(ctx, skin, 'backHand', handB[0], handB[1], wAB, 12);
 
     // ── head: spiky energy hair + goggle visor ───────────────────────────────
     ctx.save();
     ctx.translate(lean * 6 + weightShift * 0.3, headY);
+    if (!slotHidden(skin, 'head')) {
     // hair — one chunky mass swept up and back, flickering like live current
     const flick = (i) => Math.sin(t * 13 + i * 2.7) * 1.8;
     glowOn(ctx, C.glow, 10);
@@ -351,7 +357,9 @@ export const voltRig = {
     if (A.hit || A.dizzy) ctx.arc(headR * 0.3, headR * 0.64, headR * 0.18, Math.PI * 1.15, Math.PI * 1.85);
     else ctx.arc(headR * 0.26, headR * 0.44, headR * 0.26, Math.PI * 0.1, Math.PI * 0.8);
     ctx.stroke();
+    }
     ctx.restore();
+    decal(ctx, skin, 'head', lean * 6 + weightShift * 0.3, headY, 0, headR * 3.6);
 
     // ── front arm + dagger (foreground) ──────────────────────────────────────
     const shF = [4.5, shY + 2];
@@ -390,12 +398,16 @@ export const voltRig = {
     }
     const handF = drawArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C,
       { uw: 6.4, fw: 5.2, elbow: 3.6, fill: C.primary });
-    ctx.save();
-    ctx.translate(handF[0], handF[1]);
-    ctx.rotate(wA);
-    dagger(ctx, C, twirl, hot);
-    ctx.restore();
-    glove(ctx, handF[0], handF[1], 4.4, wA, C, { fill: C.primary, accent: C.accent });
+    if (!slotHidden(skin, 'weapon')) {
+      ctx.save();
+      ctx.translate(handF[0], handF[1]);
+      ctx.rotate(wA);
+      dagger(ctx, C, twirl, hot);
+      ctx.restore();
+    }
+    decal(ctx, skin, 'weapon', handF[0], handF[1], wA, 38);
+    if (!slotHidden(skin, 'frontHand')) glove(ctx, handF[0], handF[1], 4.4, wA, C, { fill: C.primary, accent: C.accent });
+    decal(ctx, skin, 'frontHand', handF[0], handF[1], wA, 14);
 
     // ── electric FX ──────────────────────────────────────────────────────────
     if (M && M.ph === 'hit') {

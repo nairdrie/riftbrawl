@@ -9,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import * as store from './store.js';
+import * as skins from './skins.js';
 import {
   Room, joinQueue, leaveQueue, createPracticeRoom, createPrivateRoom,
   roomCount, findRoomByUid, setRoomDissolvedHandler,
@@ -20,10 +21,93 @@ const PORT = process.env.PORT || 3000;
 const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/shared', express.static(path.join(__dirname, '..', 'shared')));
+// uploaded skin part-images (read-only; written via the gated design API)
+app.use('/skins', express.static(skins.SKINS_DIR, { maxAge: '1h', fallthrough: true }));
 
 app.get('/healthz', (req, res) => {
   res.json({ ok: true, uptime: Math.round(process.uptime()), sessions: sessions.size, rooms: roomCount() });
 });
+
+// ── design / skins HTTP API ───────────────────────────────────────────────
+// Read is public (every client loads it to render); writes are gated to the
+// DESIGN_ROLES allowlist. Image uploads come over HTTP (the websocket caps
+// payloads at 8KB), so this router gets its own generous JSON body limit.
+const api = express.Router();
+api.use(express.json({ limit: '8mb' }));
+
+function tokenFrom(req) {
+  const auth = req.get('authorization') || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7);
+  return req.body?.token || req.query?.token || '';
+}
+
+// crude per-IP throttle for the password-checking login endpoint
+const loginHits = new Map();
+function loginThrottled(ip) {
+  const now = Date.now();
+  const rec = loginHits.get(ip) || { n: 0, at: now };
+  if (now - rec.at > 60000) { rec.n = 0; rec.at = now; }
+  rec.n++;
+  loginHits.set(ip, rec);
+  if (loginHits.size > 5000) loginHits.clear();
+  return rec.n > 20;
+}
+
+function requireDesigner(req, res, next) {
+  const user = store.verifyToken(tokenFrom(req));
+  if (!user) return res.status(401).json({ error: 'Sign in required' });
+  if (!skins.isDesigner(user.username)) return res.status(403).json({ error: 'Designer access required' });
+  req.user = user;
+  next();
+}
+
+// public — all clients load this to render reskinned fighters
+api.get('/skins', (req, res) => res.json(skins.getDoc()));
+
+// who am I + can I design? (drives the /design page gate)
+api.get('/design/me', (req, res) => {
+  const user = store.verifyToken(tokenFrom(req));
+  if (!user) return res.json({ authed: false, designersConfigured: skins.designersConfigured() });
+  res.json({
+    authed: true,
+    username: user.username,
+    isDesigner: skins.isDesigner(user.username),
+    designersConfigured: skins.designersConfigured(),
+  });
+});
+
+// dedicated HTTP login for the design tool — avoids the websocket's
+// single-connection-per-account kick when you're also in a game tab
+api.post('/design/login', (req, res) => {
+  if (loginThrottled(req.ip)) return res.status(429).json({ error: 'Too many attempts — wait a minute' });
+  const r = store.login(String(req.body?.username || ''), String(req.body?.password || ''));
+  if (r.error) return res.status(401).json({ error: r.error });
+  res.json({
+    ok: true,
+    token: store.issueToken(r.user.uid),
+    username: r.user.username,
+    isDesigner: skins.isDesigner(r.user.username),
+  });
+});
+
+// upload one part image → returns the served path to bind into a slot
+api.post('/design/upload', requireDesigner, (req, res) => {
+  try {
+    const url = skins.saveImage(String(req.body?.charId || ''), String(req.body?.slot || ''), req.body?.dataUrl);
+    res.json({ ok: true, url });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// replace the whole skins document (validated/sanitized server-side)
+api.post('/design/skins', requireDesigner, (req, res) => {
+  const saved = skins.saveDoc(req.body?.skins || {});
+  res.json({ ok: true, doc: saved });
+});
+
+app.use('/api', api);
+app.get('/design', (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'design', 'index.html')));
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8 * 1024 });

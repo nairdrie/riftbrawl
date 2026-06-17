@@ -602,6 +602,33 @@ export function flame(ctx, x, y, r, c0, c1, t, seed = 0) {
   ctx.restore();
 }
 
+// ── skin decals (custom art riding the rig) ──────────────────────────────────
+// A "skin" is resolved by js/skins.js into { colors, slots:{ name:{img,x,y,scale,
+// rot,opacity,flip,hideBase} } }. A rig calls decal() at a part's live transform
+// (inside its own animated frame) so the bound image follows the IK/animation;
+// baseSize sets the image's reference size in the rig's local units, fitted to the
+// longest edge and centered on the anchor. No-op when nothing is bound.
+
+export function slotHidden(skin, name) {
+  const d = skin && skin.slots && skin.slots[name];
+  return !!(d && d.img && d.hideBase);
+}
+
+export function decal(ctx, skin, name, ax, ay, ang = 0, baseSize = 1) {
+  const d = skin && skin.slots && skin.slots[name];
+  if (!d || !d.img || !d.img.complete || !d.img.naturalWidth) return;
+  const img = d.img;
+  const fit = (baseSize * (d.scale ?? 1)) / Math.max(img.naturalWidth, img.naturalHeight);
+  const w = img.naturalWidth * fit, h = img.naturalHeight * fit;
+  ctx.save();
+  ctx.translate(ax + (d.x || 0), ay + (d.y || 0));
+  if (d.rot) ctx.rotate(ang + d.rot); else if (ang) ctx.rotate(ang);
+  if (d.flip) ctx.scale(-1, 1);
+  if (d.opacity != null && d.opacity < 1) ctx.globalAlpha *= d.opacity;
+  ctx.drawImage(img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
 export function drawStar(ctx, x, y, r, color) {
   ctx.fillStyle = color;
   ctx.beginPath();

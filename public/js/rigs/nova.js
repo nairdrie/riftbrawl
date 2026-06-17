@@ -15,7 +15,7 @@ import {
   TAU, lerp, clamp01, palette, paint, ink, disc, roundRect, poly,
   stroke2, ikSolve, platedSeg, jointCap, gauntlet, glowOn, glowOff,
   chain, chainLocal, ribbon, swingTrail, chargeOrb, dizzyStars, drawStar,
-  shade, mixc,
+  shade, mixc, decal, slotHidden,
 } from './common.js';
 
 // ── arm metrics (local units; "feet" at 0, +x forward, y up = negative) ──────
@@ -119,7 +119,7 @@ function drawArm(ctx, sx, sy, hx, hy, dir, C, o) {
 }
 
 export const novaRig = {
-  draw(ctx, p, char, A, t) {
+  draw(ctx, p, char, A, t, skin) {
     const C = palette(char.colors);
     const s = char.scale;
     const M = A.move;
@@ -254,8 +254,9 @@ export const novaRig = {
     else if (A.runAmt > 0.05) hB = [-13 - Math.sin(A.runPhase) * 5 * A.runAmt, shY + 12];
     drawArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C,
       { uw: 9, fw: 7.6, elbow: 4.8, fill: C.secondary });
-    gauntlet(ctx, hB[0], hB[1], 4.6, Math.atan2(hB[1] - shB[1], hB[0] - shB[0]) + 0.5, C,
+    if (!slotHidden(skin, 'backHand')) gauntlet(ctx, hB[0], hB[1], 4.6, Math.atan2(hB[1] - shB[1], hB[0] - shB[0]) + 0.5, C,
       { fill: C.secD });
+    decal(ctx, skin, 'backHand', hB[0], hB[1], Math.atan2(hB[1] - shB[1], hB[0] - shB[0]), 14);
 
     // ── back crescent pauldron (peeks behind the bust) ───────────────────────
     crescentPauldron(ctx, -15, shY - 3, true, C);
@@ -285,10 +286,12 @@ export const novaRig = {
 
     // ── front crescent pauldron (over the shoulder) ──────────────────────────
     crescentPauldron(ctx, 15, shY - 3, false, C);
+    decal(ctx, skin, 'torso', 0, (shY + waistY) / 2, 0, 36);
 
     // ── head: hooded void helm with star-eye face ────────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
+    if (!slotHidden(skin, 'head')) {
     // hood cowl (dark secondary) framing the helm — a pointed peak, drawn down
     // into two short shoulder-points, broken with an accent trim so it isn't a blob
     ctx.beginPath();
@@ -346,7 +349,9 @@ export const novaRig = {
       disc(ctx, headR * 0.1, headR * 0.1, headR * 0.13, A.hit ? '#ff8a6b' : C.accent, null);
     }
     glowOff(ctx);
+    }
     ctx.restore();
+    decal(ctx, skin, 'head', lean * 5, headY, 0, headR * 3.4);
 
     // ── FRONT arm: gestures; the orb obeys her hand ──────────────────────────
     const shF = [8, shY + 3];
@@ -394,13 +399,17 @@ export const novaRig = {
     const handF = drawArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C,
       { uw: 9.4, fw: 8, elbow: 5, fill: C.primary });
     const wA = Math.atan2(orbY - handF[1], orbX - handF[0]);
-    gauntlet(ctx, handF[0], handF[1], 5.2, wA, C, { fill: C.primary, accent: C.accent });
+    if (!slotHidden(skin, 'frontHand')) gauntlet(ctx, handF[0], handF[1], 5.2, wA, C, { fill: C.primary, accent: C.accent });
+    decal(ctx, skin, 'frontHand', handF[0], handF[1], wA, 14);
 
     // the telekinetic void orb (drawn over the hand, leading the gesture)
-    ctx.save();
-    ctx.translate(orbX, orbY);
-    voidOrb(ctx, C, orbR, t, orbHot);
-    ctx.restore();
+    if (!slotHidden(skin, 'weapon')) {
+      ctx.save();
+      ctx.translate(orbX, orbY);
+      voidOrb(ctx, C, orbR, t, orbHot);
+      ctx.restore();
+    }
+    decal(ctx, skin, 'weapon', orbX, orbY, wA, 28);
 
     // ── orbiting shards: FRONT pass (over the body) ──────────────────────────
     for (const [sx, sy, a, back] of shardPos) {

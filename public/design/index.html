@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>RIFTBRAWL — Skin Forge (dev)</title>
+  <link rel="stylesheet" href="/design/design.css">
+</head>
+<body>
+  <!-- access gate -->
+  <div id="gate" class="gate">
+    <form id="gate-form" class="gate-card">
+      <h1>⚔ Skin Forge</h1>
+      <p class="gate-sub">Designer access required.</p>
+      <input id="gate-user" type="text" autocomplete="username" placeholder="Fighter tag" spellcheck="false">
+      <input id="gate-pass" type="password" autocomplete="current-password" placeholder="Password">
+      <button id="gate-submit" type="submit">SIGN IN</button>
+      <div id="gate-msg" class="gate-msg"></div>
+    </form>
+  </div>
+
+  <!-- editor -->
+  <div id="app" class="app" hidden>
+    <header class="topbar">
+      <div class="brand">⚔ <span>SKIN FORGE</span></div>
+      <div class="topbar-right">
+        <span id="who" class="who"></span>
+        <button id="btn-revert" class="btn ghost" title="Discard unsaved changes for this character">Revert</button>
+        <button id="btn-save" class="btn primary" disabled>Save</button>
+        <a class="btn ghost" href="/">Exit</a>
+      </div>
+    </header>
+
+    <main class="layout">
+      <!-- character roster -->
+      <nav id="roster" class="roster"></nav>
+
+      <!-- live preview -->
+      <section class="stage">
+        <canvas id="preview" width="520" height="560"></canvas>
+        <div class="stage-controls">
+          <label>State
+            <select id="state-select"></select>
+          </label>
+          <button id="btn-facing" class="btn ghost" title="Flip facing">⇆ Facing</button>
+          <button id="btn-freeze" class="btn ghost" title="Pause animation">⏸ Freeze</button>
+          <label class="chk"><input id="chk-cycle" type="checkbox"> Cycle states</label>
+        </div>
+        <div id="dirty-note" class="dirty-note" hidden>Unsaved changes</div>
+      </section>
+
+      <!-- editor panel -->
+      <aside class="panel">
+        <h2 id="panel-title">—</h2>
+
+        <section class="group">
+          <h3>Palette</h3>
+          <p class="hint">Recolours every part across all states &amp; animations.</p>
+          <div id="palette"></div>
+        </section>
+
+        <section class="group">
+          <h3>Part images</h3>
+          <p class="hint">Upload art bound to a body part. It rides the animation. “Replace base art” hides the built-in part where supported.</p>
+          <div id="slots"></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="toasts" class="toasts"></div>
+  <script type="module" src="/design/design.js"></script>
+</body>
+</html>

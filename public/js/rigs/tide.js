@@ -10,7 +10,7 @@
 import {
   TAU, lerp, clamp01, easeOut, palette, paint, ink, disc, roundRect, poly,
   stroke2, ikSolve, platedSeg, jointCap, glowOn, glowOff, chain, chainLocal,
-  ribbon, swingTrail, chargeOrb, dizzyStars, face, shade,
+  ribbon, swingTrail, chargeOrb, dizzyStars, face, shade, decal, slotHidden,
 } from './common.js';
 
 // ── limb metrics (local units; feet at 0, +x forward, y up = negative) ───────
@@ -104,7 +104,7 @@ function drawLeg(ctx, hx, hy, foot, bend, C, o) {
 const THRUSTS = new Set(['jab', 'ftilt', 'fair', 'dair', 'dtilt', 'nb', 'sb']);
 
 export const tideRig = {
-  draw(ctx, p, char, A, t) {
+  draw(ctx, p, char, A, t, skin) {
     const C = palette(char.colors);
     const s = char.scale;
     const M = A.move;
@@ -180,7 +180,9 @@ export const tideRig = {
 
     // back leg (far, darker) then front leg (near, bright)
     drawLeg(ctx, -4, hipY, f2, bend2, C, { fill: C.secondary, tw: 10, sw: 8.3, knee: 5 });
+    decal(ctx, skin, 'backFoot', f2[0], f2[1], 0, 18);
     drawLeg(ctx, 4, hipY, f1, bend1, C, { fill: C.primary, tw: 11, sw: 9, knee: 5.4 });
+    decal(ctx, skin, 'frontFoot', f1[0], f1[1], 0, 18);
 
     // ── back arm: fencer's curl (drawn behind the torso) ─────────────────
     const shB = [-6, shY + 2];
@@ -197,7 +199,8 @@ export const tideRig = {
     } else if (lungeK > 0) hB = [-19 - lungeK * 4, shY - 4 + lungeK * 7];  // counterbalance
     const handB = drawArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C,
       { uw: 8, fw: 6.6, elbow: 4.4, fill: C.secD });
-    glove(ctx, handB[0], handB[1], 4.4, Math.atan2(hB[1] - shB[1], hB[0] - shB[0]) + 0.6, C, { fill: C.secD });
+    if (!slotHidden(skin, 'backHand')) glove(ctx, handB[0], handB[1], 4.4, Math.atan2(hB[1] - shB[1], hB[0] - shB[0]) + 0.6, C, { fill: C.secD });
+    decal(ctx, skin, 'backHand', handB[0], handB[1], Math.atan2(hB[1] - shB[1], hB[0] - shB[0]), 13);
 
     // ── torso: high-collared duelist jacket ──────────────────────────────
     // collar yoke behind the head
@@ -239,10 +242,12 @@ export const tideRig = {
       ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(far ? -6 : 5, -2.5); ctx.stroke();
       ctx.restore();
     }
+    decal(ctx, skin, 'torso', 0, (shY + hipY) / 2, 0, 30);
 
     // ── head: fin-crest helm ─────────────────────────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
+    if (!slotHidden(skin, 'head')) {
     // face
     disc(ctx, 0, 0, headR, SKIN, C.ink, 2.4);
     ctx.save();
@@ -297,7 +302,9 @@ export const tideRig = {
       ctx.stroke();
     }
     face(ctx, headR * 0.3, headR * 0.05, headR, C, A, { color: '#10333d', spread: headR * 0.55 });
+    }
     ctx.restore();
+    decal(ctx, skin, 'head', lean * 5, headY, 0, headR * 4);
 
     // ── front arm + rapier + glove ───────────────────────────────────────
     const shF = [6, shY + 2];
@@ -342,12 +349,16 @@ export const tideRig = {
     }
     const handF = drawArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C,
       { uw: 8.4, fw: 7, elbow: 4.7, fill: C.primary });
-    ctx.save();
-    ctx.translate(handF[0], handF[1]);
-    ctx.rotate(wA);
-    rapier(ctx, C);
-    ctx.restore();
-    glove(ctx, handF[0], handF[1], 5.2, wA, C, { fill: C.primary, accent: C.accent });
+    if (!slotHidden(skin, 'weapon')) {
+      ctx.save();
+      ctx.translate(handF[0], handF[1]);
+      ctx.rotate(wA);
+      rapier(ctx, C);
+      ctx.restore();
+    }
+    decal(ctx, skin, 'weapon', handF[0], handF[1], wA, 52);
+    if (!slotHidden(skin, 'frontHand')) glove(ctx, handF[0], handF[1], 5.2, wA, C, { fill: C.primary, accent: C.accent });
+    decal(ctx, skin, 'frontHand', handF[0], handF[1], wA, 16);
 
     // ── water FX ─────────────────────────────────────────────────────────
     if (M && M.ph === 'hit') {

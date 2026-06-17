@@ -7,7 +7,8 @@
 
 import { ACT, SMASH_CHARGE } from '/shared/constants.js';
 import { CHARACTERS } from '/shared/characters.js';
-import { deriveAnim, drawStar as starFn, TAU } from './rigs/common.js';
+import { deriveAnim, drawStar as starFn, decal, slotHidden, TAU } from './rigs/common.js';
+import { getRenderSkin } from './skins.js';
 
 const SMASH_MOVES = new Set(['ftilt', 'utilt', 'dtilt']);
 import { aegisRig } from './rigs/aegis.js';
@@ -28,9 +29,17 @@ export const drawStar = starFn;
 
 // p: sim player, t: seconds for ambient anim, opts: {ghost}
 export function drawFighter(ctx, p, t, opts = {}) {
-  const char = CHARACTERS[p.charId];
+  const baseChar = CHARACTERS[p.charId];
   const rig = RIGS[p.charId];
-  if (!char || !rig) return;
+  if (!baseChar || !rig) return;
+  // opts.skin lets a caller force a specific skin (or `null` for none); by default
+  // we use the globally-loaded skin for this character.
+  const skin = opts.skin !== undefined ? opts.skin : getRenderSkin(p.charId);
+  // palette overrides recolour every procedural part for free — the rigs derive
+  // all their shades from char.colors. Image slots are threaded into the rig below.
+  const char = (skin && skin.colors)
+    ? { ...baseChar, colors: { ...baseChar.colors, ...skin.colors } }
+    : baseChar;
   const c = char.colors;
   const s = char.scale;
   const A = deriveAnim(p, char, t);
@@ -59,7 +68,14 @@ export function drawFighter(ctx, p, t, opts = {}) {
   // squash & stretch about the feet
   if (A.squash !== 1) ctx.scale(1 + (1 - A.squash) * 0.65, A.squash);
 
-  rig.draw(ctx, p, char, A, t);
+  // whole-body replacement: one uploaded image stands in for the entire rig (it
+  // still rides facing / squash / tumble from this frame). Otherwise draw the rig,
+  // which stamps its own per-part decals where slots are bound.
+  if (slotHidden(skin, 'root')) {
+    decal(ctx, skin, 'root', 0, -52, 0, 120);
+  } else {
+    rig.draw(ctx, p, char, A, t, skin);
+  }
 
   // grabbing arm + hand (local space: +x is forward)
   if (p.act === ACT.GRAB) {

@@ -11,7 +11,7 @@
 import {
   TAU, lerp, easeOut, shade, palette, paint, ink, disc, roundRect, poly, stroke2,
   ikSolve, platedSeg, jointCap, gauntlet, groundImpact, glowOn, glowOff,
-  chain, chainLocal, ribbon, swingTrail, chargeOrb, dizzyStars,
+  chain, chainLocal, ribbon, swingTrail, chargeOrb, dizzyStars, decal, slotHidden,
 } from './common.js';
 
 // ── limb metrics (local units; feet at 0, +x forward, y up = negative) ───────
@@ -118,7 +118,7 @@ function drawLeg(ctx, hx, hy, foot, bend, C, o) {
 }
 
 export const aegisRig = {
-  draw(ctx, p, char, A, t) {
+  draw(ctx, p, char, A, t, skin) {
     const C = palette(char.colors);
     const M = A.move;
     const st = A.st;
@@ -209,10 +209,12 @@ export const aegisRig = {
     // ── BACK LEG (far, mid tone) ─────────────────────────────────────────────
     drawLeg(ctx, hipX - 6, hipY, f2, bend2, C,
       { fill: C.secondary, tw: 14, sw: 12.5, knee: 7 });
+    decal(ctx, skin, 'backFoot', f2[0], f2[1], 0, 24);
 
     // ── FRONT LEG (near, bright) ─────────────────────────────────────────────
     drawLeg(ctx, hipX + 6, hipY, f1, bend1, C,
       { fill: C.primary, tw: 15, sw: 13, knee: 7.4 });
+    decal(ctx, skin, 'frontFoot', f1[0], f1[1], 0, 24);
 
     // ── pelvis + tasset skirt (over the thigh tops) ──────────────────────────
     poly(ctx, [[-18, hipY - 7], [18, hipY - 7], [22, hipY + 12], [11, hipY + 16],
@@ -315,10 +317,12 @@ export const aegisRig = {
 
     // ── front pauldron (over the chest/shoulder) ─────────────────────────────
     pauldron(ctx, 24, shY - 5, false, C);
+    decal(ctx, skin, 'torso', 0, (shY + hipY) / 2, 0, 54);
 
     // ── head: small crowned helm sunk into the gorget ────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
+    if (!slotHidden(skin, 'head')) {
     // plume streaming from the crown
     ribbon(ctx, plumePts.map(([x, y]) => [x - lean * 5, y - headY]), 9, 2.5, C.accent, C.ink, 2.2);
     // helm dome (bright, rim-lit) with a darker back curve
@@ -356,25 +360,30 @@ export const aegisRig = {
     paint(ctx, A.hit || A.dizzy ? '#ff8a6b' : C.glow, null);
     disc(ctx, headR * 0.05, headR * 0.26, headR * 0.17, A.hit || A.dizzy ? '#ffd2b0' : '#eaf4ff', null);
     glowOff(ctx);
+    }
     ctx.restore();
+    decal(ctx, skin, 'head', lean * 5, headY, 0, headR * 3);
 
     // ── back arm (the far holding arm) ───────────────────────────────────────
     if (hB) {
       drawArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C, { ...armO, fill: C.secD, light: -1 });
-      gauntlet(ctx, hB[0], hB[1], 6.4, wA + Math.PI, C, { fill: C.secD });
+      if (!slotHidden(skin, 'backHand')) gauntlet(ctx, hB[0], hB[1], 6.4, wA + Math.PI, C, { fill: C.secD });
+      decal(ctx, skin, 'backHand', hB[0], hB[1], wA + Math.PI, 20);
     }
 
     // ── front arm + gauntlet + hammer (foreground) ───────────────────────────
     const handF = drawArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C,
       { ...armO, fill: C.primary, light: -1 });
-    if (drawHammer) {
+    if (drawHammer && !slotHidden(skin, 'weapon')) {
       ctx.save();
       ctx.translate(handF[0], handF[1]);
       ctx.rotate(wA);
       hammer(ctx, C, twoHand ? 0.3 : 0.16, hot);
       ctx.restore();
     }
-    gauntlet(ctx, handF[0], handF[1], 7.2, wA, C, { fill: C.primary, accent: C.accent });
+    if (drawHammer) decal(ctx, skin, 'weapon', handF[0], handF[1], wA, 88);
+    if (!slotHidden(skin, 'frontHand')) gauntlet(ctx, handF[0], handF[1], 7.2, wA, C, { fill: C.primary, accent: C.accent });
+    decal(ctx, skin, 'frontHand', handF[0], handF[1], wA, 22);
 
     // ── move FX ──────────────────────────────────────────────────────────────
     if (M && M.ph === 'hit') {

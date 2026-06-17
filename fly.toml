@@ -10,6 +10,9 @@ primary_region = 'ord'
 
 [env]
   SMASH_DATA_DIR = '/data'
+  # Comma-separated fighter tags allowed to open /design (the Skin Forge).
+  # Unset = locked for everyone. Prefer `fly secrets set DESIGN_ROLES=...`.
+  # DESIGN_ROLES = 'yourtag'
 
 [[mounts]]
   source = 'smash_data'

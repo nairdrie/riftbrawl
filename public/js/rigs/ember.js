@@ -13,7 +13,7 @@
 import {
   TAU, lerp, palette, paint, ink, disc, roundRect, poly,
   stroke2, ikSolve, glowOn, glowOff, chain, chainLocal, ribbon,
-  swingTrail, flame, chargeOrb, dizzyStars, face, shade,
+  swingTrail, flame, chargeOrb, dizzyStars, face, shade, decal, slotHidden,
 } from './common.js';
 
 // ── limb metrics (local units; feet at 0, +x forward, y up = negative) ───────
@@ -142,7 +142,7 @@ function staff(ctx, C, t, orbK, hot) {
 }
 
 export const emberRig = {
-  draw(ctx, p, char, A, t) {
+  draw(ctx, p, char, A, t, skin) {
     const C = palette(char.colors);
     const s = char.scale;
     const M = A.move;
@@ -246,8 +246,10 @@ export const emberRig = {
     // back leg (far, darker) — under the dress
     const lhx = hipX;
     drawClothLeg(ctx, lhx - 3, waistY + 6, f2, bend2, C, C.secD);
+    decal(ctx, skin, 'backFoot', f2[0], f2[1], 0, 14);
     // front leg (near, brighter)
     drawClothLeg(ctx, lhx + 3, waistY + 6, f1, bend1, C, C.secondary);
+    decal(ctx, skin, 'frontFoot', f1[0], f1[1], 0, 14);
     if (M && M.id === 'dair' && M.ph === 'hit') {
       // comet-heel flame trailing the plunging foot
       flame(ctx, f1[0] + 2, f1[1] + 7, 7, C.accent, '#fff0d8', t, 3);
@@ -353,6 +355,7 @@ export const emberRig = {
     glowOff(ctx);
 
     // ── back arm (puffed sleeve, behind the torso) ───────────────────────
+    decal(ctx, skin, 'torso', 0, (shY + waistY) / 2, 0, 30);
     const shB = [-5.5, shY + 2];
     let hB = [-11, shY + 14], wB = 1.2;
     if (A.hang) { hB = [4, headY - headR * 1.1]; wB = -1.4; }         // grips her hat brim
@@ -366,7 +369,8 @@ export const emberRig = {
     else if (M) { hB = [-12, shY + 8]; wB = 0.9; }
     puffSleeve(ctx, shB[0] - 1, shB[1] + 1, 5, C, C.secondary);
     const handB = clothArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C, { fill: C.secD, w: 5 });
-    casterHand(ctx, handB[0], handB[1], 3.4, wB + Math.PI, C, { fill: C.secD });
+    if (!slotHidden(skin, 'backHand')) casterHand(ctx, handB[0], handB[1], 3.4, wB + Math.PI, C, { fill: C.secD });
+    decal(ctx, skin, 'backHand', handB[0], handB[1], wB + Math.PI, 12);
 
     // ── front hair lock (over the shoulder, lit) ─────────────────────────
     ribbon(ctx, hair2Pts, 6, 1.6, HAIRL, C.ink, 1.8);
@@ -374,6 +378,7 @@ export const emberRig = {
     // ── head + witch hat ─────────────────────────────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
+    if (!slotHidden(skin, 'head')) {
     // face base with a cel shadow on the dark flank
     disc(ctx, 0, 0, headR, SKIN, C.ink, 2.6);
     ctx.save();
@@ -445,7 +450,9 @@ export const emberRig = {
     disc(ctx, tip[2][0], tip[2][1], 2.6, C.glow, null);
     disc(ctx, tip[2][0], tip[2][1], 1.3, '#fff0d8', null);
     glowOff(ctx);
+    }
     ctx.restore();
+    decal(ctx, skin, 'head', lean * 5, headY, 0, headR * 4.2);
 
     // ── front arm + staff ────────────────────────────────────────────────
     const shF = [5.5, shY + 2];
@@ -485,12 +492,16 @@ export const emberRig = {
     }
     puffSleeve(ctx, shF[0] + 1, shF[1] + 1, 5.2, C, C.primary);
     const handF = clothArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C, { fill: C.primary, w: 5.2 });
-    ctx.save();
-    ctx.translate(handF[0], handF[1]);
-    ctx.rotate(wA);
-    staff(ctx, C, t, orbK, hot);
-    ctx.restore();
-    casterHand(ctx, handF[0], handF[1], 3.6, wA, C, { fill: C.primary, accent: C.accent });
+    if (!slotHidden(skin, 'weapon')) {
+      ctx.save();
+      ctx.translate(handF[0], handF[1]);
+      ctx.rotate(wA);
+      staff(ctx, C, t, orbK, hot);
+      ctx.restore();
+    }
+    decal(ctx, skin, 'weapon', handF[0], handF[1], wA, 64);
+    if (!slotHidden(skin, 'frontHand')) casterHand(ctx, handF[0], handF[1], 3.6, wA, C, { fill: C.primary, accent: C.accent });
+    decal(ctx, skin, 'frontHand', handF[0], handF[1], wA, 12);
 
     // ── fire FX (one signature beat per special; floaty, no hit-stop) ────
     if (M && M.ph === 'hit') {

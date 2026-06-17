@@ -104,16 +104,19 @@ shared/     deterministic 60Hz simulation — runs on BOTH sides
   constants.js    physics, stage geometry, input bitmask
 
 server/     node + express + ws (no build step, no native deps)
-  index.js        static hosting + one websocket: auth, social, matches
+  index.js        static hosting, the design/skins HTTP API, one websocket
   store.js        JSON-file user store, scrypt passwords, HMAC tokens
   game.js         authoritative rooms @60Hz, matchmaking queue, CPU bot
+  skins.js        global character skins store (palette + part images), gated writes
 
 public/     vanilla ES modules served as-is
   js/game.js      netplay: client prediction + reconciliation of the local
                   player, ~70ms interpolation for remotes
   js/renderer.js  dynamic camera, stage, particles, HUD, announcements
   js/fighters.js  procedural vector fighters — no sprite assets
+  js/skins.js     loads global skins; recolour + part-image decals per rig
   js/sfx.js       all sound synthesized with WebAudio
+  design/         the /design Skin Forge editor (dev-gated)
 ```
 
 **Netcode**: the server simulates authoritatively at 60Hz and broadcasts
@@ -127,6 +130,35 @@ truth.
 **Auth/social**: username + password (scrypt), signed session tokens,
 friends with live presence, match invites, quick-match queue, W/L records —
 all over the same websocket.
+
+## Reskinning — the Skin Forge
+
+Visit **`/design`** to reskin any legend in the browser. Because every fighter is
+drawn procedurally from a small colour palette, recolouring propagates to *every*
+part, pose and animation for free; on top of that you can upload images and bind
+them to body-part **slots** (head, torso, hands, weapon/focus, feet, or the whole
+body) that ride the existing animation. Skins are **global and live** — saving
+publishes them to every client, in char-select and in real matches (looks are
+pure presentation, so reskins touch none of the netcode).
+
+- **Palette** — repaint `primary / secondary / accent / glow / trail`; reset any
+  colour back to the legend's default.
+- **Part images** — drag/drop or upload a PNG/WebP, then tune offset, scale,
+  rotation, opacity and flip live across every pose. **Replace base art** hides
+  the built-in part (head, hands, weapon and whole-body) so the image fully
+  stands in; otherwise it overlays on top of the procedural art.
+- **Live preview** — scrub every state (idle, run, all attacks, specials, shield,
+  ledge…) with a facing flip and auto state-cycling.
+
+Access is gated to **designers**: set `DESIGN_ROLES` to a comma-separated list of
+fighter tags (e.g. `DESIGN_ROLES="nairdrie,teammate"`) and restart. Anyone signed
+in with a listed tag can open `/design` and save; everyone else just plays the
+game. Uploaded images and the `skins.json` document live in `SMASH_DATA_DIR` (the
+persistent volume) and are served read-only at `/skins/…`.
+
+```bash
+DESIGN_ROLES="yourtag" npm start     # then open http://localhost:3000/design
+```
 
 ## Deploying
 
@@ -151,8 +183,11 @@ docker run -d -p 3000:3000 -v riftbrawl-data:/data riftbrawl
 Notes:
 - TLS/`wss://` is handled by your platform's proxy (the client picks
   `ws://` or `wss://` automatically from the page protocol).
-- `SMASH_DATA_DIR` (default `/data` in the container) holds `smash.db`;
-  a legacy `db.json` found there is migrated automatically on boot.
+- `SMASH_DATA_DIR` (default `/data` in the container) holds `smash.db`, the
+  `skins.json` skin document and the uploaded `skins/` part images; a legacy
+  `db.json` found there is migrated automatically on boot.
+- `DESIGN_ROLES` (comma-separated fighter tags) unlocks the `/design` Skin Forge
+  for those accounts; unset = locked for everyone.
 - `/healthz` reports `{ok, uptime, sessions, rooms}` for health checks.
 - Websocket traffic is rate-limited per connection (general + a stricter
   budget for auth/social ops) with an 8KB payload cap.

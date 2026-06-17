@@ -8,6 +8,7 @@ import { playMusic, setMusicVolume, getMusicVolume } from './music.js';
 import { MatchClient } from './game.js';
 import { Renderer } from './renderer.js';
 import { drawPortrait } from './fighters.js';
+import { loadSkins } from './skins.js';
 import { CHARACTERS, CHARACTER_LIST } from '/shared/characters.js';
 import { padConnected, samplePadMenu, getSwapAB, setSwapAB } from './input.js';
 
@@ -912,4 +913,5 @@ menuBackground();
 show('screen-auth');
 syncRotateModal();
 maybeShowPadRecommend();
+loadSkins();          // global character reskins (palette + part images) for select + matches
 net.connect();
