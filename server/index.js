@@ -25,14 +25,26 @@ app.get('/healthz', (req, res) => {
   res.json({ ok: true, uptime: Math.round(process.uptime()), sessions: sessions.size, rooms: roomCount() });
 });
 
+// Public client config: the browser needs the Supabase URL + anon key to run
+// "Sign in with Archway" itself. (The anon key is meant to be public; the
+// service-role key never leaves the server.)
+app.get('/config', (req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL || '',
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY || '',
+    studio: 'Archway Games',
+    game: 'RIFTBRAWL',
+  });
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8 * 1024 });
 
 // uid → Session (one active connection per account)
 const sessions = new Map();
 
-// message types that hit crypto or the database — much stricter budget
-const SENSITIVE = new Set(['register', 'login', 'resume', 'addFriend', 'invite']);
+// message types that hit auth or the database — much stricter budget
+const SENSITIVE = new Set(['auth', 'addFriend', 'invite']);
 
 class Session {
   constructor(ws) {
@@ -85,48 +97,61 @@ setRoomDissolvedHandler((roomId, uids) => {
   for (const uid of uids) {
     const s = sessionOf(uid);
     if (s?.room?.id === roomId) s.room = null;
-    notifyFriends(uid);
+    notifyFriends(uid);   // fire-and-forget (never rejects)
   }
 });
 
 // ── social payloads ─────────────────────────────────────────────────────────
 
-function socialPayload(user) {
-  const fresh = store.getUser(user.uid);
+async function socialPayload(user) {
+  const fresh = await store.getUser(user.uid);
+  if (!fresh) return null;
+  const [friends, requests] = await Promise.all([
+    store.getProfiles(fresh.friends),
+    store.getProfiles(fresh.requestsIn),
+  ]);
   return {
     t: 'social',
     me: { uid: fresh.uid, username: fresh.username, wins: fresh.wins, losses: fresh.losses },
-    friends: fresh.friends.map(fid => {
-      const f = store.getUser(fid);
-      const s = sessionOf(fid);
-      return f && {
+    friends: friends.map(f => {
+      const s = sessionOf(f.uid);
+      return {
         uid: f.uid, username: f.username,
         wins: f.wins, losses: f.losses,
         online: !!s, status: s ? s.status() : 'offline',
       };
-    }).filter(Boolean),
-    requests: fresh.requestsIn.map(rid => {
-      const r = store.getUser(rid);
-      return r && { uid: r.uid, username: r.username };
-    }).filter(Boolean),
+    }),
+    requests: requests.map(r => ({ uid: r.uid, username: r.username })),
   };
 }
 
-function pushSocial(uid) {
-  const s = sessionOf(uid);
-  if (s?.user) s.send(socialPayload(s.user));
+// these run from both awaited handlers and fire-and-forget event hooks, so they
+// swallow their own errors — a DB blip must never surface as a rejection
+async function pushSocial(uid) {
+  try {
+    const s = sessionOf(uid);
+    if (!s?.user) return;
+    const payload = await socialPayload(s.user);
+    if (payload) s.send(payload);
+  } catch (e) {
+    console.error('[social] pushSocial failed:', e.message);
+  }
 }
 
 // tell my friends my presence changed
-function notifyFriends(uid) {
-  const user = store.getUser(uid);
-  if (!user) return;
-  for (const fid of user.friends) pushSocial(fid);
+async function notifyFriends(uid) {
+  try {
+    const user = await store.getUser(uid);
+    if (!user) return;
+    await Promise.all(user.friends.map(fid => pushSocial(fid)));
+  } catch (e) {
+    console.error('[social] notifyFriends failed:', e.message);
+  }
 }
 
 // ── auth flow ───────────────────────────────────────────────────────────────
 
-function completeAuth(session, user) {
+async function completeAuth(session, user) {
   // kick any existing connection on this account
   const existing = sessionOf(user.uid);
   if (existing && existing !== session) {
@@ -136,12 +161,13 @@ function completeAuth(session, user) {
   }
   session.user = user;
   sessions.set(user.uid, session);
+  // the client already holds its own Supabase session — we just confirm the link
   session.send({
     t: 'auth', ok: true,
-    token: store.issueToken(user.uid),
     user: { uid: user.uid, username: user.username, wins: user.wins, losses: user.losses },
   });
-  session.send(socialPayload(user));
+  const payload = await socialPayload(user);
+  if (payload) session.send(payload);
   // reconnect support: if they have a live room, plug them back in
   const room = findRoomByUid(user.uid);
   if (room && room.reattach(user.uid, (obj) => session.send(obj))) {
@@ -150,7 +176,7 @@ function completeAuth(session, user) {
     session.room = null;
     session.send({ t: 'roomGone' });
   }
-  notifyFriends(user.uid);
+  await notifyFriends(user.uid);
 }
 
 // ── room membership helper ──────────────────────────────────────────────────
@@ -202,53 +228,44 @@ function cleanup(session, notify = true) {
 // ── message routing ─────────────────────────────────────────────────────────
 
 const handlers = {
-  register(session, msg) {
-    const r = store.register(String(msg.username || ''), String(msg.password || ''));
-    if (r.error) return session.send({ t: 'auth', ok: false, error: r.error });
-    completeAuth(session, r.user);
+  // single auth path: the browser signs in with Supabase ("your Archway
+  // account") and hands us its access token, which we verify and resolve to a
+  // profile. Covers first login, returning sessions, and reconnects alike.
+  async auth(session, msg) {
+    const user = await store.verifyToken(msg.token);
+    if (!user) return session.send({ t: 'auth', ok: false, error: 'Sign-in expired — please sign in again' });
+    await completeAuth(session, user);
   },
 
-  login(session, msg) {
-    const r = store.login(String(msg.username || ''), String(msg.password || ''));
-    if (r.error) return session.send({ t: 'auth', ok: false, error: r.error });
-    completeAuth(session, r.user);
-  },
-
-  resume(session, msg) {
-    const user = store.verifyToken(msg.token);
-    if (!user) return session.send({ t: 'auth', ok: false, error: 'Session expired' });
-    completeAuth(session, user);
-  },
-
-  addFriend(session, msg) {
-    const r = store.sendFriendRequest(session.uid, String(msg.username || ''));
+  async addFriend(session, msg) {
+    const r = await store.sendFriendRequest(session.uid, String(msg.username || ''));
     if (r.error) return session.send({ t: 'toast', kind: 'error', msg: r.error });
     session.send({ t: 'toast', kind: 'ok', msg: `Request sent to ${r.to.username}` });
-    pushSocial(session.uid);
-    pushSocial(r.to.uid);
+    await pushSocial(session.uid);
+    await pushSocial(r.to.uid);
   },
 
-  acceptFriend(session, msg) {
-    const r = store.acceptFriendRequest(session.uid, String(msg.uid || ''));
+  async acceptFriend(session, msg) {
+    const r = await store.acceptFriendRequest(session.uid, String(msg.uid || ''));
     if (r.error) return session.send({ t: 'toast', kind: 'error', msg: r.error });
-    pushSocial(session.uid);
-    pushSocial(r.to.uid);
+    await pushSocial(session.uid);
+    await pushSocial(r.to.uid);
   },
 
-  declineFriend(session, msg) {
-    store.declineFriendRequest(session.uid, String(msg.uid || ''));
-    pushSocial(session.uid);
+  async declineFriend(session, msg) {
+    await store.declineFriendRequest(session.uid, String(msg.uid || ''));
+    await pushSocial(session.uid);
   },
 
-  removeFriend(session, msg) {
-    store.removeFriend(session.uid, String(msg.uid || ''));
-    pushSocial(session.uid);
-    pushSocial(String(msg.uid || ''));
+  async removeFriend(session, msg) {
+    await store.removeFriend(session.uid, String(msg.uid || ''));
+    await pushSocial(session.uid);
+    await pushSocial(String(msg.uid || ''));
   },
 
-  invite(session, msg) {
+  async invite(session, msg) {
     const target = sessionOf(String(msg.uid || ''));
-    const me = store.getUser(session.uid);
+    const me = await store.getUser(session.uid);
     if (!me.friends.includes(msg.uid)) return session.send({ t: 'toast', kind: 'error', msg: 'Not your friend' });
     if (!target) return session.send({ t: 'toast', kind: 'error', msg: 'Friend is offline' });
     if (target.room || session.room) return session.send({ t: 'toast', kind: 'error', msg: 'Busy in a match' });
@@ -327,11 +344,11 @@ const handlers = {
   },
 };
 
-const UNAUTHED = new Set(['register', 'login', 'resume']);
+const UNAUTHED = new Set(['auth']);
 
 wss.on('connection', (ws) => {
   const session = new Session(ws);
-  ws.on('message', (data) => {
+  ws.on('message', async (data) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
     const fn = handlers[msg.t];
@@ -348,7 +365,7 @@ wss.on('connection', (ws) => {
       }
       return;
     }
-    try { fn(session, msg); } catch (e) {
+    try { await fn(session, msg); } catch (e) {
       console.error(`[ws] handler ${msg.t} failed:`, e);
     }
   });

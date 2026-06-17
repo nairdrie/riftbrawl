@@ -51,7 +51,10 @@ ls /opt/pw-browsers/chromium-*/chrome-linux/chrome
 Start the server in the background (it serves the ES modules + `/dev` pages):
 
 ```bash
-PORT=3210 SMASH_DATA_DIR=/tmp/smashdata node server/index.js   # run detached/background
+# the /dev pages don't sign in, so placeholder Supabase config is fine here
+PORT=3210 SUPABASE_URL=https://placeholder.supabase.co \
+  SUPABASE_ANON_KEY=x SUPABASE_SERVICE_ROLE_KEY=x \
+  node server/index.js   # run detached/background
 ```
 
 Then drop this harness in the repo root and run it (`CHAR=volt node rig-shots.mjs`).

@@ -9,17 +9,27 @@ legends, one beautiful floating arena.
 
 ## Quick start
 
-Requires **Node 22+** (`nvm install 22 && nvm use 22`) — better-sqlite3 ships
-prebuilt binaries for Node 22, so there's nothing to compile on any OS.
+Requires **Node 22+** (`nvm install 22 && nvm use 22`). Accounts, the social
+graph, and authentication all live in **Supabase** — there are no native deps
+and nothing on disk.
+
+1. Create a Supabase project and run [`supabase/schema.sql`](supabase/schema.sql)
+   in its SQL Editor (creates `profiles` / `friendships` / `friend_requests`,
+   the sign-up trigger, and helper RPCs).
+2. Enable **Auth → Providers → Email**. For zero-friction sign-up, turn **off**
+   "Confirm email" so new accounts get a session immediately.
+3. Copy [`.env.example`](.env.example) to `.env` and fill in your project's URL,
+   anon key, and service-role key.
 
 ```bash
 npm install
-npm start          # → http://localhost:3000
+node --env-file=.env server/index.js     # → http://localhost:3000
+# (or: export the vars and `npm start`)
 ```
 
-Open two browsers (or a friend opens yours over LAN/internet), create fighter
-tags, add each other as friends, hit **DUEL** — or just queue **QUICK MATCH**.
-**VS CPU** works solo.
+Open two browsers (or a friend opens yours over LAN/internet), create your
+**Archway account** (email + a fighter tag), add each other as friends, hit
+**DUEL** — or just queue **QUICK MATCH**. **VS CPU** works solo.
 
 ## The game
 
@@ -105,8 +115,10 @@ shared/     deterministic 60Hz simulation — runs on BOTH sides
 
 server/     node + express + ws (no build step, no native deps)
   index.js        static hosting + one websocket: auth, social, matches
-  store.js        JSON-file user store, scrypt passwords, HMAC tokens
+  store.js        Supabase data layer: token verify + profiles/friends/W-L
   game.js         authoritative rooms @60Hz, matchmaking queue, CPU bot
+
+supabase/   schema.sql — tables, sign-up trigger, and RPCs to run once
 
 public/     vanilla ES modules served as-is
   js/game.js      netplay: client prediction + reconciliation of the local
@@ -124,20 +136,22 @@ error smoothing), while remote fighters and projectiles interpolate a
 ~70ms buffer. Result: zero perceived input latency, server-authoritative
 truth.
 
-**Auth/social**: username + password (scrypt), signed session tokens,
-friends with live presence, match invites, quick-match queue, W/L records —
-all over the same websocket.
+**Auth/social**: "Sign in with Archway" — the browser authenticates directly
+against **Supabase Auth** (your Archway account) and passes its access token
+over the websocket; the server verifies it and resolves your fighter-tag
+profile. Friends with live presence, match invites, quick-match queue, and W/L
+records all ride the same socket, with the social graph stored in Supabase.
 
 ## Deploying
 
-The whole game is one stateful Node process (sessions, rooms, and the
-matchmaking queue live in memory; accounts live in SQLite on disk), so run
-**exactly one instance** with a persistent volume — that's it.
+The Node process is stateless apart from in-memory sessions/rooms/queue (all of
+which are fine to lose on restart) — accounts and the social graph live in
+Supabase. No volume needed; just supply the three Supabase env vars.
 
 ```bash
 # Fly.io (config in fly.toml — set app name & region first)
 fly launch --no-deploy
-fly volumes create smash_data --size 1
+fly secrets set SUPABASE_URL=... SUPABASE_ANON_KEY=... SUPABASE_SERVICE_ROLE_KEY=...
 fly deploy
 ```
 
@@ -145,14 +159,16 @@ Or any Docker host:
 
 ```bash
 docker build -t riftbrawl .
-docker run -d -p 3000:3000 -v riftbrawl-data:/data riftbrawl
+docker run -d -p 3000:3000 \
+  -e SUPABASE_URL=... -e SUPABASE_ANON_KEY=... -e SUPABASE_SERVICE_ROLE_KEY=... \
+  riftbrawl
 ```
 
 Notes:
 - TLS/`wss://` is handled by your platform's proxy (the client picks
   `ws://` or `wss://` automatically from the page protocol).
-- `SMASH_DATA_DIR` (default `/data` in the container) holds `smash.db`;
-  a legacy `db.json` found there is migrated automatically on boot.
+- The browser fetches the public Supabase config (URL + anon key) from
+  `GET /config`; the service-role key never leaves the server.
 - `/healthz` reports `{ok, uptime, sessions, rooms}` for health checks.
 - Websocket traffic is rate-limited per connection (general + a stricter
   budget for auth/social ops) with an 8KB payload cap.
@@ -169,3 +185,8 @@ npm test                 # sim mechanics (ledge, dash, crouch cancel, body
 node test/visual.js      # drives two real headless-Chrome clients through
                          # the entire flow and screenshots every screen
 ```
+
+The sim tests are pure and always run. The end-to-end test creates real Archway
+accounts, so it only runs when `SUPABASE_URL`, `SUPABASE_ANON_KEY` and
+`SUPABASE_SERVICE_ROLE_KEY` are set (it cleans up the accounts afterward) —
+otherwise it skips.
