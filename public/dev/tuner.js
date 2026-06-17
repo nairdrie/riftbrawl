@@ -159,7 +159,11 @@ const APOSE = [
 ];
 const aCtl = {};
 for (const [label, f, mn, mx, st] of APOSE)
-  aCtl[f] = mkRange($('aRows'), label, mn, mx, st, 0, (v) => { if (!editable || aState.value === 'idle') return; const t = ensureTarget(); if (t) t[f] = v; });
+  aCtl[f] = mkRange($('aRows'), label, mn, mx, st, 0, (v) => {
+    if (!editable || aState.value === 'idle') return;
+    if (previewPlay) setLoop(false);   // editing a pose: pause the loop so the change is visible
+    const t = ensureTarget(); if (t) t[f] = v;
+  });
 function getTarget() {
   const k = aState.value; if (k === 'idle' || !workingSpec?.poses) return null;
   return isAttack(k) ? (workingSpec.poses[k]?.[aPhase.value] || null) : (workingSpec.poses[k] || null);
