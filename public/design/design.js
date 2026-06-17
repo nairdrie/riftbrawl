@@ -10,6 +10,7 @@ import { ACT } from '/shared/constants.js';
 import { CHARACTERS, CHARACTER_LIST } from '/shared/characters.js';
 import { drawFighter, drawPortrait } from '/js/fighters.js';
 import { initSupa, signIn, currentSession } from '/js/supa.js';
+import { openPaint } from '/design/paint.js';
 import {
   loadSkins, getSkinsDoc, setSkinsDoc, setPreviewSkin,
   COLOR_KEYS, SLOT_DEFS, CHAR_SLOTS,
@@ -248,7 +249,21 @@ function buildSlots() {
       e.preventDefault(); thumb.classList.remove('drag');
       const f = e.dataTransfer.files[0]; if (f) uploadFile(id, f);
     });
-    body.append(thumb, file);
+    // upload + paint actions
+    const actions = document.createElement('div'); actions.className = 'slot-actions';
+    const uploadBtn = document.createElement('button'); uploadBtn.className = 'btn ghost';
+    uploadBtn.textContent = data?.img ? 'Replace image' : 'Upload image';
+    uploadBtn.addEventListener('click', () => file.click());
+    const paintBtn = document.createElement('button'); paintBtn.className = 'btn ghost';
+    paintBtn.textContent = data?.img ? '✎ Edit in paint' : '✎ Paint';
+    paintBtn.addEventListener('click', () => openPaint({
+      title: `${CHARACTERS[cur].name} · ${def.label}`,
+      startUrl: data?.img || null,
+      color: CHARACTERS[cur].colors.primary,
+      onApply: (dataUrl) => uploadDataUrl(id, dataUrl),
+    }));
+    actions.append(uploadBtn, paintBtn);
+    body.append(thumb, file, actions);
 
     if (data) {
       body.append(
@@ -316,6 +331,12 @@ async function uploadFile(slot, fileObj) {
   if (!fileObj.type.startsWith('image/')) return toast('That file is not an image', 'error');
   let dataUrl;
   try { dataUrl = await readDataURL(fileObj); } catch { return toast('Could not read file', 'error'); }
+  await uploadDataUrl(slot, dataUrl);
+}
+
+// store a PNG/image data URL (from a file upload or the paint canvas) and bind it
+// to the slot, preserving any existing transform.
+async function uploadDataUrl(slot, dataUrl) {
   try {
     const r = await fetch('/api/design/upload', {
       method: 'POST', headers: await jsonAuth(),
@@ -332,7 +353,7 @@ async function uploadFile(slot, fileObj) {
     };
     openSlots.add(cur + ':' + slot);
     applyPreview(cur); refreshDirty(); refreshRosterActive(); buildSlots();
-    toast('Image bound to ' + slot, 'ok');
+    toast('Art bound to ' + slot, 'ok');
   } catch {
     toast('Upload failed', 'error');
   }

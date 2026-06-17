@@ -196,6 +196,37 @@ button, input, select { font: inherit; color: inherit; }
 .slot-foot input { accent-color: var(--accent); }
 .slot-foot .rm { margin-left: auto; color: var(--err); background: none; border: none; cursor: pointer; }
 .slot-foot .rm:hover { text-decoration: underline; }
+.slot-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.slot-actions .btn { flex: 1; justify-content: center; padding: 6px; font-size: 13px; }
+
+/* ── paint modal ── */
+.paint-modal { position: fixed; inset: 0; z-index: 50; background: rgba(6,8,18,.74); display: grid; place-items: center; }
+.paint-card {
+  width: min(640px, 94vw); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 16px; padding: 14px; box-shadow: 0 30px 90px rgba(0,0,0,.6);
+}
+.paint-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.paint-title { font-weight: 700; letter-spacing: .03em; }
+.paint-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.paint-tools .p-color { width: 34px; height: 28px; border: 1px solid var(--line); border-radius: 7px; background: none; padding: 0; cursor: pointer; }
+.p-tool { border: 1px solid var(--line); background: var(--panel2); color: var(--ink); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
+.p-tool:hover { filter: brightness(1.18); }
+.p-tool.active { border-color: var(--accent); color: #fff; box-shadow: 0 0 0 1px var(--accent) inset; }
+.p-range { color: var(--muted); display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.p-range input { accent-color: var(--accent); }
+.paint-actions { margin-left: auto; display: flex; gap: 8px; }
+.paint-stage { display: grid; place-items: center; }
+.paint-canvas {
+  width: min(512px, 84vw); height: auto; aspect-ratio: 1; touch-action: none; cursor: crosshair;
+  border-radius: 10px; border: 1px solid var(--line);
+  background:
+    linear-gradient(45deg, #1a1f3e 25%, transparent 25%) 0 0/20px 20px,
+    linear-gradient(-45deg, #1a1f3e 25%, transparent 25%) 0 10px/20px 20px,
+    linear-gradient(45deg, transparent 75%, #1a1f3e 75%) 10px -10px/20px 20px,
+    linear-gradient(-45deg, transparent 75%, #1a1f3e 75%) -10px 0/20px 20px,
+    #11142a;
+}
+.paint-hint { color: var(--muted); font-size: 12px; margin-top: 10px; text-align: center; }
 
 /* toasts */
 .toasts { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 8px; z-index: 30; }
