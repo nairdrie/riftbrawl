@@ -38,11 +38,12 @@ function clothArm(ctx, sx, sy, hx, hy, dir, C, o) {
     c.lineTo(jx + litShift, jy - litShift * 0.3);
     c.lineTo(lerp(jx, ex, 0.85) + litShift * 0.6, lerp(jy, ey, 0.85));
   }, w * 0.62, fill, null);
-  // 3) rim sliver on the lit edge
-  ink(ctx, shade(fill, 1.4), Math.max(1, w * 0.16));
+  // 3) rim sliver on the lit edge — warm fire-bounce so dark fabric still reads
+  ink(ctx, o.rim ?? shade(fill, 1.4), Math.max(1.1, w * 0.2));
   ctx.beginPath();
   ctx.moveTo(sx + litShift * 1.3, sy - litShift * 0.7);
   ctx.lineTo(jx + litShift * 1.3, jy - litShift * 0.7);
+  ctx.lineTo(lerp(jx, ex, 0.7) + litShift, lerp(jy, ey, 0.7) - litShift * 0.5);
   ctx.stroke();
   return [ex, ey];
 }
@@ -146,12 +147,18 @@ export const emberRig = {
     const C = palette(char.colors);
     const s = char.scale;
     const M = A.move;
-    const SKIN = '#f6d3ab';
-    const HAIR = '#a83a5a';
-    const HAIRL = '#d65b78';        // lit hair strand
-    const CLOTH = '#5e2a48';        // rich plum for hat + dress
-    const CLOTHL = shade(CLOTH, 1.42);  // lit fabric
-    const CLOTHD = shade(CLOTH, 0.7);   // cel-shadow fabric
+    // Warm, saturated, high-contrast palette — re-lit by her own fire (a warm key
+    // from the lower-front), so she glows like the inspo key-art instead of reading
+    // as a muddy plum. Cel ramps keep a saturated mid → don't desaturate toward grey.
+    const SKIN = '#f8d9b0';
+    const SKINW = '#ffbe86';        // warm fire bounce on the lit cheek/jaw
+    const HAIR = '#b8313f';         // vivid auburn-red (reads as fire-mage hair)
+    const HAIRL = '#ff7a5c';        // fire-lit strand
+    const HAIRD = shade(HAIR, 0.6); // deep hair core
+    const CLOTH = '#6e2342';        // richer burgundy plum
+    const CLOTHL = '#c44a6a';       // saturated lit fabric (a real value step, not grey)
+    const CLOTHD = '#3c1226';       // deep cel-shadow fabric (stronger contrast)
+    const WARM = C.glow;            // fire bounce / warm rim accent
 
     // ── metrics + smouldering glide ──────────────────────────────────────
     const idle = A.grounded && !M && !A.guard && !A.dizzy && !A.reel &&
@@ -164,8 +171,8 @@ export const emberRig = {
     const hipX = sway * 1.8;
     const waistY = -35 + crouchDrop + hover;
     const shY = -56 + crouchDrop * 1.1 + hover + breathY;
-    const headY = -71 + crouchDrop * 1.15 + hover + breathY * 1.25;
-    const headR = 10.5;
+    const headY = -72 + crouchDrop * 1.15 + hover + breathY * 1.25;
+    const headR = 11.6;
 
     let lean = A.lean - sway * 0.04;
     let lunge = 0;
@@ -206,24 +213,44 @@ export const emberRig = {
     ctx.translate(lunge + hipX, 0);
     ctx.rotate(lean * 0.5);
 
+    // ── warm ground-ember pool she stands in (grounded) — fire underlight ─
+    if (!A.airborne && !A.hang) {
+      ctx.save();
+      const gp = ctx.createRadialGradient(0, -2, 2, 0, -2, 36);
+      gp.addColorStop(0, WARM + '5a');
+      gp.addColorStop(0.5, C.accent + '24');
+      gp.addColorStop(1, WARM + '00');
+      ctx.fillStyle = gp;
+      ctx.beginPath(); ctx.ellipse(0, -1, 32, 8.5, 0, 0, TAU); ctx.fill();
+      for (let i = 0; i < 3; i++) {
+        const fx = (i - 1) * 13 + Math.sin(t * 1.6 + i) * 2;
+        flame(ctx, fx, -2, 3.2 + Math.sin(t * 4 + i * 2) * 0.6, C.accent, '#fff0d8', t, i * 3);
+      }
+      ctx.restore();
+    }
+
     // ── rising ambient embers (behind, drifting up off her) ──────────────
     ctx.save();
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 7; i++) {
       const cyc = ((t * 0.5 + i * 0.27) % 1);
-      const ex = Math.sin(t * 1.2 + i * 2.4) * (10 + i * 4) - 4;
-      const ey = -8 - cyc * 78;
-      ctx.globalAlpha = (1 - cyc) * 0.7;
-      glowOn(ctx, C.accent, 6);
-      disc(ctx, ex, ey, 1.5 + (1 - cyc) * 1.1, i % 2 ? C.accent : C.glow, null);
+      const ex = Math.sin(t * 1.2 + i * 2.4) * (11 + i * 4) - 4;
+      const ey = -8 - cyc * 84;
+      ctx.globalAlpha = (1 - cyc) * 0.75;
+      glowOn(ctx, C.accent, 7);
+      disc(ctx, ex, ey, 1.6 + (1 - cyc) * 1.3, i % 2 ? C.accent : C.glow, null);
       glowOff(ctx);
     }
     ctx.restore();
 
-    // ── back hair (furthest back), with a lit strand ─────────────────────
-    ribbon(ctx, hairPts, 11, 3, HAIR, C.ink, 2.2);
+    // ── back hair (furthest back): deep core, body, and a fire-lit strand ──
+    ribbon(ctx, hairPts.map(([x, y]) => [x - 1.5, y + 1]), 14, 4, HAIRD, C.ink, 2.4);
+    ribbon(ctx, hairPts, 11, 3, HAIR, null);
     ctx.save();
-    ctx.globalAlpha *= 0.8;
-    ribbon(ctx, hairPts.map(([x, y]) => [x + 2, y - 1]), 4.5, 1.6, HAIRL, null);
+    ctx.globalAlpha *= 0.92;
+    ribbon(ctx, hairPts.map(([x, y]) => [x + 2.5, y - 1]), 5, 1.7, HAIRL, null);
+    glowOn(ctx, WARM, 4);
+    ribbon(ctx, hairPts.map(([x, y]) => [x + 3, y - 1.6]), 2, 0.8, '#ffe0b0', null);
+    glowOff(ctx);
     ctx.restore();
 
     // ── foot targets (stance / glide / air) ──────────────────────────────
@@ -365,21 +392,26 @@ export const emberRig = {
     else if (M && M.id === 'ub') { hB = [-12, shY - 2]; wB = 0.2; }
     else if (M) { hB = [-12, shY + 8]; wB = 0.9; }
     puffSleeve(ctx, shB[0] - 1, shB[1] + 1, 5, C, C.secondary);
-    const handB = clothArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C, { fill: C.secD, w: 5 });
-    casterHand(ctx, handB[0], handB[1], 3.4, wB + Math.PI, C, { fill: C.secD });
+    const handB = clothArm(ctx, shB[0], shB[1], hB[0], hB[1], 1, C, { fill: C.secondary, w: 5, rim: shade(WARM, 0.85) });
+    casterHand(ctx, handB[0], handB[1], 3.4, wB + Math.PI, C, { fill: C.secondary });
 
-    // ── front hair lock (over the shoulder, lit) ─────────────────────────
-    ribbon(ctx, hair2Pts, 6, 1.6, HAIRL, C.ink, 1.8);
+    // ── front hair lock (over the shoulder, fire-lit) ────────────────────
+    ribbon(ctx, hair2Pts, 7, 1.8, HAIR, C.ink, 1.8);
+    ribbon(ctx, hair2Pts.map(([x, y]) => [x + 1.5, y - 0.4]), 3, 0.9, HAIRL, null);
 
     // ── head + witch hat ─────────────────────────────────────────────────
     ctx.save();
     ctx.translate(lean * 5, headY);
-    // face base with a cel shadow on the dark flank
+    // face base: cel shadow on the dark (back) flank + a warm fire-bounce on the lit flank
     disc(ctx, 0, 0, headR, SKIN, C.ink, 2.6);
     ctx.save();
     ctx.beginPath(); ctx.arc(0, 0, headR, 0, TAU); ctx.clip();
-    ctx.beginPath(); ctx.arc(-headR * 0.5, headR * 0.32, headR * 0.95, 0, TAU);
-    paint(ctx, shade(SKIN, 0.88), null);
+    ctx.beginPath(); ctx.arc(-headR * 0.55, headR * 0.3, headR * 0.95, 0, TAU);
+    paint(ctx, shade(SKIN, 0.8), null);
+    ctx.globalAlpha *= 0.6;                                  // warm underglow from her own fire
+    ctx.beginPath(); ctx.arc(headR * 0.5, headR * 0.62, headR * 0.78, 0, TAU);
+    paint(ctx, SKINW, null);
+    ctx.globalAlpha = 1;
     ctx.restore();
     // fringe sweeping across the brow
     ctx.beginPath();
@@ -395,9 +427,16 @@ export const emberRig = {
     ctx.moveTo(-headR * 0.5, -headR * 0.55);
     ctx.quadraticCurveTo(headR * 0.1, -headR * 0.9, headR * 0.8, -headR * 0.6);
     ctx.stroke();
-    face(ctx, headR * 0.18, headR * 0.22, headR * 1.15, C, A, { color: '#3c1a26', spread: headR * 0.5 });
+    face(ctx, headR * 0.16, headR * 0.2, headR * 1.32, C, A, { color: '#4a1622', spread: headR * 0.56 });
+    // warm ember catchlight in the eyes — gives the face life and a fire-lit glint
+    if (!A.dizzy && !A.hit && !A.blink) {
+      glowOn(ctx, C.glow, 5);
+      disc(ctx, -headR * 0.06, headR * 0.09, headR * 0.07, '#ffe6c2', null);
+      disc(ctx, headR * 0.72, headR * 0.09, headR * 0.07, '#ffe6c2', null);
+      glowOff(ctx);
+    }
     // little smirk
-    ink(ctx, '#46202e', 1.5);
+    ink(ctx, '#5a1626', 1.7);
     ctx.beginPath();
     if (A.hit || A.dizzy) ctx.arc(headR * 0.3, headR * 0.66, headR * 0.15, Math.PI * 1.1, Math.PI * 1.9);
     else ctx.arc(headR * 0.22, headR * 0.5, headR * 0.2, Math.PI * 0.15, Math.PI * 0.7);
@@ -484,7 +523,7 @@ export const emberRig = {
       hF = [13 + sway * 0.4, shY + 13 - regrip * 1.5]; wA = -1.32 + regrip * 0.05;
     }
     puffSleeve(ctx, shF[0] + 1, shF[1] + 1, 5.2, C, C.primary);
-    const handF = clothArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C, { fill: C.primary, w: 5.2 });
+    const handF = clothArm(ctx, shF[0], shF[1], hF[0], hF[1], -1, C, { fill: C.primary, w: 5.2, rim: shade(WARM, 1.1) });
     ctx.save();
     ctx.translate(handF[0], handF[1]);
     ctx.rotate(wA);
